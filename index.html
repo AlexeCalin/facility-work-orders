@@ -122,16 +122,18 @@ body.first-order #page-new .panel{margin-bottom:0}
           <label>Last name *</label>
           <input id="technicianLastName" required>
         </div>
-        <div class="field">
-          <label>Monthly capacity (hours) *</label>
-          <input id="technicianCapacity" type="number" min="0.25" step="0.25" value="160" required>
-        </div>
+        <div class="field"><label>Function / Position</label><input id="technicianRole" placeholder="e.g. Electromechanic"></div>
+        <div class="field"><label>Month *</label><input id="technicianMonth" type="month" required onchange="loadTechnicianMonth()"></div>
+        <div class="field"><label>Working days in month *</label><input id="technicianWorkingDays" type="number" min="0" max="31" step="1" required oninput="calculateTechnicianCapacity()"></div>
+        <div class="field"><label>Vacation days in month *</label><input id="technicianVacationDays" type="number" min="0" max="31" step="1" value="0" required oninput="calculateTechnicianCapacity()"></div>
+        <div class="field"><label>Hours per working day *</label><input id="technicianDailyHours" type="number" min="0.25" max="24" step="0.25" value="8" required oninput="calculateTechnicianCapacity()"></div>
+        <div class="field"><label>Monthly capacity (hours) *</label><input id="technicianCapacity" type="number" min="0" step="0.25" value="160" readonly required></div>
       </div>
       <div class="actions">
        <button type="button" onclick="requireTechnicianPassword('save')">Save technician</button>
       </div>
     </form>
-    <div id="technicianList"></div>
+    <div class="subnote">Funcția, zilele lucrătoare și concediile pe fiecare lună sunt salvate în Supabase și sincronizate între dispozitive. Zilele lucrătoare sunt propuse automat (luni–vineri), dar le poți corecta pentru sărbători legale.</div><div id="technicianList"></div>
   </div>
   <div class="panel">
     <h2>Monthly technician workload</h2>
@@ -441,48 +443,28 @@ function requireTechnicianPassword(action, id=''){
   }
 }
 
+// Datele lunare sunt stocate centralizat în câmpul JSON data al tabelului facility_technicians.
+function selectedTechMonth(){return $('technicianMonth').value||$('workloadMonth').value||new Date().toISOString().slice(0,7)}
+function countWeekdays(month){if(!/^\d{4}-\d{2}$/.test(month))return 0;const [y,m]=month.split('-').map(Number);let n=0;for(let d=new Date(y,m-1,1);d.getMonth()===m-1;d.setDate(d.getDate()+1)){if(d.getDay()!==0&&d.getDay()!==6)n++}return n}
+function monthData(t,month){const record=t.months?.[month];return record||{workingDays:countWeekdays(month),vacationDays:0,dailyHours:8}}
+function monthlyCapacity(t,month){const d=monthData(t,month);return Math.max(0,(Number(d.workingDays)-Number(d.vacationDays))*Number(d.dailyHours))}
+function calculateTechnicianCapacity(){const wd=Number($('technicianWorkingDays').value),vd=Number($('technicianVacationDays').value),dh=Number($('technicianDailyHours').value);$('technicianCapacity').value=wd>=0&&vd>=0&&vd<=wd&&dh>0?((wd-vd)*dh).toFixed(2):''}
+function loadTechnicianMonth(){const id=$('technicianId').value,month=selectedTechMonth();const t=technicians.find(x=>x.id===id);const d=t?monthData(t,month):{workingDays:countWeekdays(month),vacationDays:0,dailyHours:8};$('technicianWorkingDays').value=d.workingDays;$('technicianVacationDays').value=d.vacationDays;$('technicianDailyHours').value=d.dailyHours;calculateTechnicianCapacity()}
 async function saveTechnician(){
-  const id=$('technicianId').value;
-  const firstName=$('technicianFirstName').value.trim();
-  const lastName=$('technicianLastName').value.trim();
-  const capacity=Number($('technicianCapacity').value);
-
-  if(!firstName||!lastName||capacity<=0){
-    alert('Introduceți numele tehnicianului și o capacitate lunară mai mare decât zero.');
-    return;
-  }
-
-  const technician={
-    id:id||'TECH-'+Date.now(),
-    firstName,
-    lastName,
-    capacity
-  };
-
-  if(id){
-    technicians=technicians.map(t=>t.id===id?technician:t);
-  }else{
-    technicians.push(technician);
-  }
-
-  try{await cloudTech(technician)}catch(e){failCloud(e);await refreshCloud();return;}
-  $('technicianForm').reset();
-  $('technicianId').value='';
-  $('technicianCapacity').value='160';
-  renderTechnicians();
+ const id=$('technicianId').value,firstName=$('technicianFirstName').value.trim(),lastName=$('technicianLastName').value.trim(),role=$('technicianRole').value.trim(),month=selectedTechMonth();
+ const workingDays=Number($('technicianWorkingDays').value),vacationDays=Number($('technicianVacationDays').value),dailyHours=Number($('technicianDailyHours').value),capacity=(workingDays-vacationDays)*dailyHours;
+ if(!firstName||!lastName||!month||!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!Number.isInteger(workingDays)||workingDays<0||workingDays>31||!Number.isInteger(vacationDays)||vacationDays<0||vacationDays>workingDays||!Number.isFinite(dailyHours)||dailyHours<=0||dailyHours>24||!Number.isInteger(dailyHours*4)){alert('Verifică zilele lucrătoare, concediul și orele pe zi. Concediul nu poate depăși zilele lucrătoare.');return;}
+ const previous=technicians.find(t=>t.id===id);
+ const technician={...(previous||{}),id:id||'TECH-'+Date.now(),firstName,lastName,role,capacity,months:{...(previous?.months||{}),[month]:{workingDays,vacationDays,dailyHours}}};
+ try{await cloudTech(technician)}catch(e){failCloud(e);await refreshCloud();return;}
+ if(id)technicians=technicians.map(t=>t.id===id?technician:t);else technicians.push(technician);
+ $('technicianForm').reset();$('technicianId').value='';$('technicianMonth').value=$('workloadMonth').value||new Date().toISOString().slice(0,7);loadTechnicianMonth();renderTechnicians();toast('Technician saved in Supabase. Monthly data synchronized.');
 }
-
 function editTechnician(id){
-  const t=technicians.find(x=>x.id===id);
-  if(!t)return;
-
-  $('technicianId').value=t.id;
-  $('technicianFirstName').value=t.firstName;
-  $('technicianLastName').value=t.lastName;
-  $('technicianCapacity').value=t.capacity;
-  window.scrollTo(0,0);
+ const t=technicians.find(x=>x.id===id);if(!t)return;
+ $('technicianId').value=t.id;$('technicianFirstName').value=t.firstName;$('technicianLastName').value=t.lastName;
+ $('technicianRole').value=t.role||'';$('technicianMonth').value=$('workloadMonth').value||new Date().toISOString().slice(0,7);loadTechnicianMonth();window.scrollTo(0,0);
 }
-
 async function deleteTechnician(id){
   const t=technicians.find(x=>x.id===id);
   if(!t||!confirm(`Delete ${t.firstName} ${t.lastName}?`))return;
@@ -495,14 +477,18 @@ function renderTechnicians(){
   const monthInput=$('workloadMonth');
   if(!monthInput.value)monthInput.value=new Date().toISOString().slice(0,7);
   const month=monthInput.value;
+  if(!$('technicianId').value){$('technicianMonth').value=month;loadTechnicianMonth()}
 
   $('technicianList').innerHTML=technicians.length
     ? `<div class="tablewrap"><table>
-        <thead><tr><th>Technician</th><th>Monthly capacity</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Technician</th><th>Function</th><th>Working days</th><th>Vacation days</th><th>Monthly capacity · ${esc(month)}</th><th>Actions</th></tr></thead>
         <tbody>${technicians.map(t=>`
           <tr>
             <td>${esc(t.firstName)} ${esc(t.lastName)}</td>
-            <td>${Number(t.capacity)} hours</td>
+            <td>${esc(t.role||'—')}</td>
+            <td>${monthData(t,month).workingDays}</td>
+            <td>${monthData(t,month).vacationDays}</td>
+            <td>${monthlyCapacity(t,month).toFixed(2)} hours</td>
             <td>
               <button class="small secondary" onclick="requireTechnicianPassword('edit','${t.id}')">Edit</button>
 <button class="small danger" onclick="requireTechnicianPassword('delete','${t.id}')">Delete</button>
@@ -521,12 +507,13 @@ function renderTechnicians(){
         ? Number(o.actualHours)||0
         : 0);
     },0);
-    const percent=Number(t.capacity)>0?hours/Number(t.capacity)*100:0;
+    const capacity=monthlyCapacity(t,month);
+    const percent=capacity>0?hours/capacity*100:0;
 
     return `<tr>
       <td>${esc(t.firstName)} ${esc(t.lastName)}</td>
       <td>${hours.toFixed(2)}</td>
-      <td>${Number(t.capacity).toFixed(2)}</td>
+      <td>${capacity.toFixed(2)}</td>
       <td><b>${percent.toFixed(1)}%</b></td>
     </tr>`;
   }).join('');
@@ -668,5 +655,6 @@ async function disableFacilityPush(){
  }catch(e){alert('Eroare: '+(e.message||e));}
 }
 
+$('technicianMonth').value=new Date().toISOString().slice(0,7);loadTechnicianMonth();
 renderDashboard();
 </script></body></html>
