@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Facility Work Orders</title>
+<style>
+:root{--navy:#17324d;--blue:#2463a6;--bg:#f3f6fa;--line:#dce3ec;--muted:#66758a;--green:#18845b;--red:#c0392b;--amber:#b9770e}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 "Segoe UI",Arial,sans-serif;background:var(--bg);color:#1d2939}
+header{background:var(--navy);color:white;padding:20px 26px;display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}
+header h1{margin:0;font-size:23px;letter-spacing:.2px}header p{margin:4px 0 0;color:#d5e1ed}
+button{border:0;border-radius:7px;padding:10px 14px;cursor:pointer;font-weight:650;background:var(--blue);color:white}button.secondary{background:#e8eef5;color:#243b53}button.danger{background:#b9382f}button.small{padding:6px 9px;font-size:12px}
+main{max-width:1500px;margin:auto;padding:22px}
+.nav{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}.nav button{background:#e3eaf2;color:#34495e}.nav button.active{background:var(--blue);color:white}
+.cards{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:12px;margin-bottom:18px}
+.metric{background:white;border:1px solid var(--line);border-radius:11px;padding:16px}.metric .label{color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase}.metric .num{font-size:29px;font-weight:750;margin-top:4px}.metric .hint{font-size:12px;color:var(--muted)}
+.panel{background:white;border:1px solid var(--line);border-radius:11px;padding:19px;margin-bottom:17px}.panel h2{font-size:17px;margin:0 0 15px;color:var(--navy)}
+.formgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+.field{display:flex;flex-direction:column;gap:5px}.field.full{grid-column:1/-1}.field label{font-weight:650;font-size:12px;color:#435267}
+input,select,textarea{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:7px;background:white;color:#1d2939;font:inherit}textarea{min-height:88px;resize:vertical}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:15px;flex-wrap:wrap}
+.filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:13px}
+.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:8px}table{border-collapse:collapse;width:100%;min-width:1000px;background:white}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid #e8edf3;vertical-align:top}th{background:#f6f8fb;color:#536477;font-size:11px;text-transform:uppercase;letter-spacing:.35px;position:sticky;top:0}tbody tr:hover{background:#f8fbff}td.desc{max-width:270px;white-space:normal}
+.pill{display:inline-block;padding:4px 8px;border-radius:99px;font-size:11px;font-weight:750;white-space:nowrap;background:#edf1f5;color:#475467}.p1{background:#fde8e7;color:#a52820}.p2{background:#fff0d5;color:#8a5700}.p3{background:#e3efff;color:#205b9d}.p4{background:#edf1f5;color:#596579}.st-New{background:#e6efff;color:#245ca6}.st-Wip{background:#dff5e9;color:#176c49}.st-Completed,.st-Closed{background:#dff5e9;color:#176c49}.st-On-Hold,.st-Waiting-for-Supplier{background:#fff0d5;color:#8a5700}.overdue{color:#b42318;font-weight:750}
+.hidden{display:none!important}.empty{text-align:center;color:var(--muted);padding:35px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.money{font-weight:750;color:var(--navy)}.subnote{font-size:12px;color:var(--muted);margin-top:6px}.barrow{display:grid;grid-template-columns:140px 1fr 30px;gap:10px;align-items:center;margin:10px 0;font-size:12px}.bar{height:10px;background:#edf1f5;border-radius:99px;overflow:hidden}.bar span{display:block;height:100%;background:#3678b9;border-radius:99px}
+#toast{position:fixed;right:20px;bottom:20px;background:#17324d;color:white;padding:12px 17px;border-radius:8px;box-shadow:0 6px 25px #0002;display:none;z-index:10}
+@media(max-width:850px){.three{grid-template-columns:1fr}.money{font-size:13px}main{padding:12px}.cards{grid-template-columns:repeat(2,1fr)}.formgrid{grid-template-columns:1fr 1fr}.filters{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}}
+@media(max-width:520px){.formgrid{grid-template-columns:1fr}.field.full{grid-column:auto}.cards{grid-template-columns:1fr 1fr}header{padding:16px}}
+@media print{header,.nav,.filters,.no-print,.actions,#toast{display:none!important}body{background:white}main{padding:0;max-width:none}.panel,.metric{box-shadow:none;border:1px solid #aaa}.tablewrap{overflow:visible}table{min-width:0;font-size:10px}th,td{padding:5px}.cards{grid-template-columns:repeat(4,1fr)}}
+#accessGate{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#17324d;
+}
+#accessGate.hidden{display:none!important}
+.access-box{
+  width:min(420px,calc(100% - 32px));
+  padding:28px;
+  background:white;
+  border-radius:12px;
+  text-align:center;
+  box-shadow:0 12px 40px #0004;
+}
+.access-box h2{margin:0 0 10px;color:#17324d}
+.access-box p{color:#66758a}
+.access-box input{margin:8px 0 12px}
+.access-error{color:#b42318;min-height:22px}
+.requester-section{grid-column:1/-1;background:#2463a6;padding:16px;border-radius:10px;color:#fff}
+.requester-section .field label{color:#fff}
+.requester-section input,.requester-section select,.requester-section textarea{border-color:#d5e5f8}
+.requester-note{margin-top:14px;padding:13px 10px;background:#17324d;color:#fff;text-align:center;font-size:23px;font-weight:800;letter-spacing:.4px;border-radius:7px}
+.target-overdue{color:#b42318!important;background:#fde8e7!important;font-weight:800}
+.target-today{color:#8a5700!important;background:#fff0b3!important;font-weight:800}
+body.first-order header, body.first-order .nav, body.first-order #page-dashboard,
+body.first-order #page-list, body.first-order #page-technicians,
+body.first-order #page-detail, body.first-order main > div:last-child {display:none!important}
+body.first-order #page-new{display:block!important}
+body.first-order main{max-width:1000px;padding-top:28px}
+body.first-order #page-new .panel{margin-bottom:0}
+
+</style></head>
+<body>
+<div id="accessGate" class="hidden">
+  <div class="access-box">
+    <h2>Acces pagină principală</h2>
+    <p>Introdu parola pentru acces la Overview și administrare.</p>
+    <form id="accessForm">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="accessPassword" type="password" placeholder="Parolă" autocomplete="current-password" required style="margin:8px 0 12px">
+        <button type="button" class="secondary" id="togglePassword" style="margin-top:-4px;white-space:nowrap">Afișează</button>
+      </div>
+      <div class="access-error" id="accessError"></div>
+      <button type="submit">Intră în pagina principală</button>
+    </form>
+  </div>
+</div>
+<header><div><h1>Facility Work Orders</h1><p>Buildings · Utilities · Outdoor areas · Facility services</p></div></header>
+<main>
+<div class="nav no-print">
+<button id="tab-dashboard" class="active" onclick="showPage('dashboard')">Overview</button>
+<button id="tab-list" onclick="showPage('list')">All Work Orders</button>
+<button id="tab-technicians" onclick="showPage('technicians')">Technicians & workload</button>
+<button id="tab-new" onclick="newOrder()">＋ Create Work Order</button>
+<button onclick="exportCSV()" class="secondary">Export CSV</button><button onclick="window.print()" class="secondary">Print</button>
+<label class="secondary" style="padding:9px 12px;border-radius:7px;cursor:pointer">Import CSV <input type="file" id="importFile" accept=".csv,text/csv" style="display:none" onchange="importCSV(event)"></label>
+</div>
+<section id="page-dashboard">
+<div class="cards" id="metrics"></div>
+<div class="three">
+<div class="panel"><h2>Work Order Status Summary</h2><div id="statusTable"></div></div>
+<div class="panel"><h2>Costs Overview (RON)</h2><div id="costOverview"></div></div>
+<div class="panel"><h2>Work Orders by Priority</h2><div id="priorityChart"></div></div>
+</div>
+<div class="panel">
+  <h2>Cheltuieli lunare (RON)</h2>
+  <div class="filters" style="grid-template-columns:minmax(160px, 240px)">
+    <select id="costYear" onchange="renderMonthlyCosts()"></select>
+  </div>
+  <div id="monthlyCosts"></div>
+</div>
+</section>
+<section id="page-technicians" class="hidden">
+  <div class="panel">
+    <h2>Technicians</h2>
+    <form id="technicianForm" onsubmit="saveTechnician(event)">
+      <input type="hidden" id="technicianId">
+      <div class="formgrid">
+        <div class="field">
+          <label>First name *</label>
+          <input id="technicianFirstName" required>
+        </div>
+        <div class="field">
+          <label>Last name *</label>
+          <input id="technicianLastName" required>
+        </div>
+        <div class="field">
+          <label>Monthly capacity (hours) *</label>
+          <input id="technicianCapacity" type="number" min="0.25" step="0.25" value="160" required>
+        </div>
+      </div>
+      <div class="actions">
+       <button type="button" onclick="requireTechnicianPassword('save')">Save technician</button>
+      </div>
+    </form>
+    <div id="technicianList"></div>
+  </div>
+  <div class="panel">
+    <h2>Monthly technician workload</h2>
+    <div class="filters">
+      <input id="workloadMonth" type="month" onchange="renderTechnicians()">
+    </div>
+    <div id="monthlyWorkload"></div>
+  </div>
+</section>
+<section id="page-list" class="hidden">
+<div class="panel">
+<h2>All Work Orders</h2>
+<div class="filters">
+<input id="search" placeholder="Search ID, requester, description..." oninput="renderList()">
+<select id="fStatus" onchange="renderList()"><option value="">All statuses</option></select>
+<select id="fPriority" onchange="renderList()"><option value="">All priorities</option><option>P1 - Immediate</option><option>P2 - High</option><option>P3 - Normal</option><option>P4 - Low</option></select>
+<select id="fLocation" onchange="renderList()"><option value="">All locations</option></select>
+<select id="fType" onchange="renderList()"><option value="">All request types</option></select>
+</div>
+<div class="actions no-print" style="justify-content:flex-start;margin:0 0 12px">
+  <button type="button" class="danger" onclick="deleteSelectedOrders()">
+    Șterge selecția
+  </button>
+</div>
+<div id="listTable"></div><p id="listCount" style="color:var(--muted);font-size:12px"></p>
+</div></section>
+<section id="page-new" class="hidden">
+<div class="panel"><h2 id="formTitle">Create Facility Work Order</h2>
+<form id="woForm" onsubmit="saveOrder(event)">
+<input type="hidden" id="editId">
+<div class="requester-section">
+<div class="formgrid">
+<div class="field"><label>Requester name *</label><input id="requester" required></div>
+<div class="field"><label>Department</label><input id="department" placeholder="e.g. Logistics, HR"></div>
+<div class="field"><label>Location *</label><select id="location" required></select></div>
+<div class="field"><label>Request type *</label><select id="type" required></select></div>
+<div class="field"><label>Operational impact</label><select id="impact"><option>No direct impact</option><option>Limited operational inconvenience</option><option>Serious operational disruption</option><option>Production / logistics partly or fully stopped</option><option>Safety risk</option><option>Risk of further damage</option></select></div>
+<div class="field"><label>Requested priority *</label><select id="requestedPriority" required><option>P1 - Immediate</option><option>P2 - High</option><option selected>P3 - Normal</option><option>P4 - Low</option></select></div>
+<div class="field"><label>Facility priority</label><select id="priority"><option>P1 - Immediate</option><option>P2 - High</option><option selected>P3 - Normal</option><option>P4 - Low</option></select></div>
+<div class="field"><label>Status</label><select id="status"></select></div>
+<div class="field full"><label>Problem / request description *</label><textarea id="description" required placeholder="Describe the problem, symptoms and requested work..."></textarea></div>
+<div class="field"><label>Request date *</label><input id="requestDate" type="date" required></div>
+</div>
+<div class="requester-note">De completat de catre requester</div>
+</div>
+<div class="formgrid">
+<div class="field"><label>Target date</label><input id="targetDate" type="date"></div>
+<div class="field"><label>Date completed</label><input id="dateCompleted" type="date"></div>
+<div class="field"><label>Assigned to</label><input id="assigned" placeholder="Facility Team / contractor"></div>
+<div class="field"><label>Actual cost (RON)</label><input id="actualCost" type="number" min="0" step="0.01"></div>
+<div class="field"><label>Estimated labor hours</label><input id="estimatedHours" type="number" min="0" step="0.25" placeholder="e.g. 3.5"></div>
+<div class="field"><label>Actual labor hours</label><input id="actualHours" type="number" min="0" step="0.25" placeholder="e.g. 2.5"></div>
+<div class="field full"><label>Facility notes / work performed</label><textarea id="notes" placeholder="Actions taken, materials, follow-up..."></textarea></div>
+</div>
+<div class="actions"><button type="button" class="secondary" onclick="if(document.body.classList.contains('first-order')){document.body.classList.remove('first-order');$('accessPassword').value='';$('accessError').textContent='';$('accessGate').classList.remove('hidden')}else showPage('list')">Cancel</button><button type="submit">Save Work Order</button></div>
+</form></div></section>
+<section id="page-detail" class="hidden"><div class="panel" id="detailPanel"></div></section>
+<div style="font-size:11px;color:#788699;text-align:center;padding:10px">Supabase · Shared data · Export CSV regularly for backup.</div>
+</main><div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const locations=["Production Hall -1","Production Hall 0","Production Hall 1","Production Hall 2","Production Hall 3","Production Hall 4","Production Hall 5","Sofa Production Hall","Distribution Center (DC)","Raw Materials Storage","Outdoor Area / Yard","Office / Common Area","Other"];
+const types=["Breakdown / Defect","Repair","Building Maintenance","Electrical / Lighting","Water / Sanitary / Drainage","Heating / Ventilation / Climate","Doors / Gates / Loading Docks","Roof / Leakage","Outdoor Area / Pavement","Fencing / Access","Cleaning / Waste","Building / Site Safety Provision","Modification / Improvement","Other"];
+const priorities=["P1 - Immediate","P2 - High","P3 - Normal","P4 - Low"];
+const statuses=["New","Approved","Wip","Closed","Rejected"];
+const $=id=>document.getElementById(id);
+let orders=[];
+let technicians=[];
+const sb=window.supabase.createClient("https://fuuhssegewbkcaladcbt.supabase.co","sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4");
+let isAdmin=false;
+let adminPassword=''; // doar în memoria paginii; nu se salvează în browser
+let busy=false;
+const EDGE_URL='https://fuuhssegewbkcaladcbt.supabase.co/functions/v1/facility-admin';
+async function adminRequest(action,payload={},password=adminPassword){
+ const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':'sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4','x-facility-password':password},body:JSON.stringify({action,...payload})});
+ let data;try{data=await res.json()}catch{throw new Error('Răspuns invalid de la Edge Function. Verifică dacă este publicată.')}
+ if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
+ return data;
+}
+async function refreshCloud(){
+ if(!isAdmin)return;
+ const data=await adminRequest('list');
+ orders=data.orders||[];technicians=data.technicians||[];
+ renderDashboard();renderList();renderTechnicians();
+}
+async function publicRequest(o){
+ const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':'sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4'},body:JSON.stringify({action:'createRequest',order:o})});
+ let data;try{data=await res.json()}catch{throw new Error('Răspuns invalid de la Supabase.')} 
+ if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
+ return data;
+}
+async function cloudOrder(o){
+ if(isAdmin){await adminRequest('upsertOrder',{order:o});return;}
+ await publicRequest(o);
+}
+async function cloudTech(t){await adminRequest('upsertTechnician',{technician:t});}
+async function cloudDelete(table,ids){await adminRequest('delete',{table,ids});}
+function failCloud(e){alert('Eroare Supabase: '+(e.message||e));}
+
+
+function loadTechnicians(){
+  try{return JSON.parse(localStorage.getItem('facility_technicians_v1')||'[]')}
+  catch(e){return []}
+}
+function saveTechnicians(){}
+function loadOrders(){try{return JSON.parse(localStorage.getItem('facility_work_orders_v1')||'[]')}catch(e){return []}}
+function persist(){}
+function today(){return new Date().toISOString().slice(0,10)}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function options(id,arr,first){$(id).innerHTML=(first?'<option value="">'+first+'</option>':'')+arr.map(x=>`<option>${esc(x)}</option>`).join('')}
+options('location',locations,'Select location');options('type',types,'Select request type');options('status',statuses);
+options('fStatus',statuses,'All statuses');options('fLocation',locations,'All locations');options('fType',types,'All request types');
+function showPage(page){
+  ['dashboard','list','new','detail','technicians'].forEach(p=>{
+    $('page-'+p).classList.toggle('hidden',p!==page);
+  });
+  document.querySelectorAll('.nav button[id^=tab-]').forEach(b=>{
+    b.classList.toggle('active',b.id==='tab-'+page);
+  });
+  if(page==='dashboard')renderDashboard();
+  if(page==='list')renderList();
+  if(page==='technicians')renderTechnicians();
+  window.scrollTo(0,0);
+}
+function newOrder(){ $('woForm').reset();$('editId').value='';$('formTitle').textContent='Create Facility Work Order';$('requestDate').value=today();$('status').value='New';$('priority').value='P3 - Normal';$('requestedPriority').value='P3 - Normal';showPage('new')}
+async function saveOrder(e){
+e.preventDefault();if(busy)return;busy=true;let id=$('editId').value;let existing=orders.find(o=>o.id===id);let o={id:id||'FR-'+String(Date.now()).slice(-8),created:existing?.created||new Date().toISOString(),updated:new Date().toISOString()};
+[['requester','requester'],['department','department'],['requestDate','dateSubmitted'],['location','location'],['type','type'],['impact','impact'],['requestedPriority','requestedPriority'],['priority','priority'],['status','status'],['description','description'],['assigned','assigned'],['targetDate','targetDate'],['actualCost','actualCost'],['estimatedHours','estimatedHours'],['actualHours','actualHours'],['dateCompleted','dateCompleted'],['notes','notes']].forEach(([a,b])=>o[b]=$(a).value);if (o.dateCompleted) {
+  o.status = 'Closed';
+}
+if(!o.dateStarted&&o.status==='In Progress')o.dateStarted=today();if(!o.dateCompleted&&['Completed','Closed'].includes(o.status))o.dateCompleted=today();
+try{
+ if(!isAdmin){
+  o={id:o.id,created:o.created,updated:o.updated,requester:o.requester,department:o.department,dateSubmitted:o.dateSubmitted,location:o.location,type:o.type,impact:o.impact,requestedPriority:o.requestedPriority,priority:o.requestedPriority,status:"New",description:o.description,assigned:"",targetDate:"",dateCompleted:"",actualCost:"",estimatedHours:"",actualHours:"",notes:""};
+ }
+ await cloudOrder(o);
+ if(isAdmin){if(existing)orders=orders.map(x=>x.id===id?o:x);else orders.unshift(o);}
+ }catch(err){failCloud(err);busy=false;return;}busy=false;
+if(document.body.classList.contains('first-order')){
+  document.body.classList.remove('first-order');
+  document.getElementById('accessPassword').value='';
+  document.getElementById('accessError').textContent='';
+  accessGate.classList.remove('hidden');
+  toast('Work Order salvat în Supabase: '+o.id);
+  return;
+}
+toast(existing?'Work Order updated':'Work Order created: '+o.id);showDetail(o.id)}
+function editOrder(id){let o=orders.find(x=>x.id===id);if(!o)return;newOrder();$('formTitle').textContent='Edit Work Order · '+o.id;$('editId').value=o.id;
+const m={requester:'requester',department:'department',dateSubmitted:'requestDate',location:'location',type:'type',impact:'impact',requestedPriority:'requestedPriority',priority:'priority',status:'status',description:'description',assigned:'assigned',targetDate:'targetDate',actualCost:'actualCost',estimatedHours:'estimatedHours',actualHours:'actualHours',dateCompleted:'dateCompleted',notes:'notes'};
+Object.entries(m).forEach(([k,v])=>$(v).value=o[k]??'');showPage('new')}
+function isClosed(o){return ['Completed','Closed','Rejected'].includes(o.status)}
+function isOverdue(o){return o.targetDate&&o.targetDate<today()&&!isClosed(o)}
+function priorityClass(p){return 'p'+(priorities.indexOf(p)+1||4)}
+function statusClass(s){return 'st-'+String(s||'').replaceAll(' ','-')}
+function pill(s,cls){return `<span class="pill ${cls||''}">${esc(s||'—')}</span>`}
+function age(o){let end=o.dateCompleted||today();return Math.max(0,Math.floor((new Date(end+'T12:00:00')-new Date((o.dateSubmitted||today())+'T12:00:00'))/86400000))}
+function metric(label,num,hint){return `<div class="metric"><div class="label">${label}</div><div class="num">${num}</div><div class="hint">${hint||''}</div></div>`}
+function money(v){return (Number(v)||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})+' RON'}
+function renderCostPeriods(){
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+  const monthlyCost = Array(12).fill(0);
+  const yearlyCost = {};
+
+  orders.forEach(o => {
+    const cost = Number(o.actualCost) || 0;
+    const target = o.targetDate;
+
+    if (!target) return;
+
+    const date = new Date(target + 'T12:00:00');
+    const year = date.getFullYear();
+    const month = date.getMonth();
+
+    yearlyCost[year] = (yearlyCost[year] || 0) + cost;
+
+    if (year === currentYear && month === currentMonth) {
+      monthlyCost[month] += cost;
+    }
+  });
+
+  return `
+    <div class="metric" style="margin-top:9px">
+      <div class="label">Actual cost this month · ${currentYear}</div>
+      <div class="num" style="font-size:23px">${money(monthlyCost[currentMonth])}</div>
+    </div>
+    <div class="metric" style="margin-top:9px">
+      <div class="label">Actual cost this year · ${currentYear}</div>
+      <div class="num" style="font-size:23px">${money(yearlyCost[currentYear] || 0)}</div>
+    </div>`;
+}
+function renderMonthlyCosts() {
+  const yearSelect = $('costYear');
+  const currentYear = new Date().getFullYear();
+
+  const years = new Set([currentYear]);
+  orders.forEach(o => {
+    const date = o.dateCompleted || o.targetDate;
+    if (!date) return;
+
+    const year = Number(date.slice(0, 4));
+    if (Number.isFinite(year)) years.add(year);
+  });
+
+  const previousYear = yearSelect.value;
+  yearSelect.innerHTML = [...years]
+    .sort((a, b) => b - a)
+    .map(year => `<option value="${year}">${year}</option>`)
+    .join('');
+
+  yearSelect.value = years.has(Number(previousYear))
+    ? previousYear
+    : String(currentYear);
+
+  const selectedYear = Number(yearSelect.value);
+  const monthlyTotals = Array(12).fill(0);
+
+  orders.forEach(o => {
+    const date = o.dateCompleted || o.targetDate;
+    if (!date || Number(date.slice(0, 4)) !== selectedYear) return;
+
+    const month = Number(date.slice(5, 7)) - 1;
+    if (month >= 0 && month < 12) {
+      monthlyTotals[month] += Number(o.actualCost) || 0;
+    }
+  });
+
+  const monthNames = [
+    'Ianuarie', 'Februarie', 'Martie', 'Aprilie',
+    'Mai', 'Iunie', 'Iulie', 'August',
+    'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'
+  ];
+
+  const total = monthlyTotals.reduce((sum, amount) => sum + amount, 0);
+
+  $('monthlyCosts').innerHTML = `
+    <div class="tablewrap">
+      <table style="min-width:0">
+        <thead>
+          <tr><th>Luna</th><th>Cheltuieli (RON)</th></tr>
+        </thead>
+        <tbody>
+          ${monthNames.map((month, index) => `
+            <tr>
+              <td>${month}</td>
+              <td>${money(monthlyTotals[index])}</td>
+            </tr>
+          `).join('')}
+          <tr>
+            <th>Total ${selectedYear}</th>
+            <th>${money(total)}</th>
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
+}
+function renderDashboard(){
+  let open=orders.filter(o=>!isClosed(o)),
+      over=orders.filter(isOverdue),
+      urgent=open.filter(o=>o.priority===priorities[0]),
+      done=orders.filter(o=>['Completed','Closed'].includes(o.status));
+
+  $('metrics').innerHTML=
+    metric('Total work orders',orders.length,'All requests')+
+    metric('Open / in progress',open.length,'Not completed / closed')+
+    metric('Overdue',over.length,'Past target date')+
+    metric('P1 · Immediate',urgent.length,'Open immediate priority')+
+    metric('Completed / closed',done.length,'Finished work');
+
+  $('statusTable').innerHTML=
+    '<div class="tablewrap"><table style="min-width:0"><thead><tr><th>Status</th><th>Count</th><th>% total</th></tr></thead><tbody>'+
+    statuses.map(st=>{
+      let n=orders.filter(o=>o.status===st).length;
+      return `<tr><td>${pill(st,statusClass(st))}</td><td><b>${n}</b></td><td>${orders.length?(n/orders.length*100).toFixed(1):'0.0'}%</td></tr>`;
+    }).join('')+
+    '</tbody></table></div>';
+
+  $('costOverview').innerHTML=renderCostPeriods();
+
+  $('priorityChart').innerHTML=
+    priorities.map(st=>{
+      let n=orders.filter(o=>o.priority===st&&!isClosed(o)).length;
+      return barrow(st,n,Math.max(1,open.length));
+    }).join('');renderMonthlyCosts();
+}
+function barrow(label,n,total){return `<div class="barrow"><div>${esc(label)}</div><div class="bar"><span style="width:${total?Math.min(100,n/total*100):0}%"></span></div><b>${n}</b></div>`}
+function requireTechnicianPassword(action, id=''){
+  const password=prompt('Introduceți parola:');
+
+  if(password!=='Class2026'){
+    if(password!==null) alert('Parolă incorectă.');
+    return;
+  }
+
+  if(action==='save'){
+    const form=$('technicianForm');
+    if(!form.reportValidity()) return;
+    saveTechnician();
+  }
+
+  if(action==='edit'){
+    editTechnician(id);
+  }
+
+  if(action==='delete'){
+    deleteTechnician(id);
+  }
+}
+
+async function saveTechnician(){
+  const id=$('technicianId').value;
+  const firstName=$('technicianFirstName').value.trim();
+  const lastName=$('technicianLastName').value.trim();
+  const capacity=Number($('technicianCapacity').value);
+
+  if(!firstName||!lastName||capacity<=0){
+    alert('Introduceți numele tehnicianului și o capacitate lunară mai mare decât zero.');
+    return;
+  }
+
+  const technician={
+    id:id||'TECH-'+Date.now(),
+    firstName,
+    lastName,
+    capacity
+  };
+
+  if(id){
+    technicians=technicians.map(t=>t.id===id?technician:t);
+  }else{
+    technicians.push(technician);
+  }
+
+  try{await cloudTech(technician)}catch(e){failCloud(e);await refreshCloud();return;}
+  $('technicianForm').reset();
+  $('technicianId').value='';
+  $('technicianCapacity').value='160';
+  renderTechnicians();
+}
+
+function editTechnician(id){
+  const t=technicians.find(x=>x.id===id);
+  if(!t)return;
+
+  $('technicianId').value=t.id;
+  $('technicianFirstName').value=t.firstName;
+  $('technicianLastName').value=t.lastName;
+  $('technicianCapacity').value=t.capacity;
+  window.scrollTo(0,0);
+}
+
+async function deleteTechnician(id){
+  const t=technicians.find(x=>x.id===id);
+  if(!t||!confirm(`Delete ${t.firstName} ${t.lastName}?`))return;
+
+  try{await cloudDelete("facility_technicians",[id]);technicians=technicians.filter(x=>x.id!==id)}catch(e){failCloud(e);return;}
+  renderTechnicians();
+}
+
+function renderTechnicians(){
+  const monthInput=$('workloadMonth');
+  if(!monthInput.value)monthInput.value=new Date().toISOString().slice(0,7);
+  const month=monthInput.value;
+
+  $('technicianList').innerHTML=technicians.length
+    ? `<div class="tablewrap"><table>
+        <thead><tr><th>Technician</th><th>Monthly capacity</th><th>Actions</th></tr></thead>
+        <tbody>${technicians.map(t=>`
+          <tr>
+            <td>${esc(t.firstName)} ${esc(t.lastName)}</td>
+            <td>${Number(t.capacity)} hours</td>
+            <td>
+              <button class="small secondary" onclick="requireTechnicianPassword('edit','${t.id}')">Edit</button>
+<button class="small danger" onclick="requireTechnicianPassword('delete','${t.id}')">Delete</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`
+    : '<div class="empty">Add technicians using the form above.</div>';
+
+  const rows=technicians.map(t=>{
+    const name=`${t.firstName} ${t.lastName}`.trim().toLowerCase();
+    const hours=orders.reduce((sum,o)=>{
+      const assigned=String(o.assigned||'').trim().toLowerCase();
+      const workDate=o.dateCompleted||o.dateStarted||'';
+      return sum+(assigned===name&&workDate.startsWith(month)
+        ? Number(o.actualHours)||0
+        : 0);
+    },0);
+    const percent=Number(t.capacity)>0?hours/Number(t.capacity)*100:0;
+
+    return `<tr>
+      <td>${esc(t.firstName)} ${esc(t.lastName)}</td>
+      <td>${hours.toFixed(2)}</td>
+      <td>${Number(t.capacity).toFixed(2)}</td>
+      <td><b>${percent.toFixed(1)}%</b></td>
+    </tr>`;
+  }).join('');
+
+  $('monthlyWorkload').innerHTML=technicians.length
+    ? `<div class="tablewrap"><table>
+        <thead><tr><th>Technician</th><th>Actual hours · ${esc(month)}</th><th>Monthly capacity</th><th>Workload</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`
+    : '<div class="empty">Add technicians to see monthly workload.</div>';
+}
+function filtered(){let q=$('search')?.value.toLowerCase()||'',s=$('fStatus')?.value||'',p=$('fPriority')?.value||'',l=$('fLocation')?.value||'',t=$('fType')?.value||'';return orders.filter(o=>(!q||[o.id,o.requester,o.department,o.description,o.specific,o.assigned].some(v=>String(v||'').toLowerCase().includes(q)))&&(!s||o.status===s)&&(!p||o.priority===p)&&(!l||o.location===l)&&(!t||o.type===t)).sort((a,b)=>(b.targetDate||'').localeCompare(a.targetDate||''))}
+function tableHTML(arr){if(!arr.length)return '';return `<div class="tablewrap"><table><thead><tr><th>Selectează</th><th>WO ID</th><th>Submitted</th><th>Requester</th><th>Location / Area</th><th>Request type / description</th><th>Priority</th><th>Status</th><th>Target date</th><th>Date Completed</th><th>Actions</th></tr></thead><tbody>${arr.map(o=>`<tr><td><input type="checkbox" class="wo-select" value="${esc(o.id)}" aria-label="Selectează work order ${esc(o.id)}"></td><td><a href="#" onclick="requireWorkOrderPassword('open','${o.id}');return false"><b>${esc(o.id)}</b></a></td><td>${esc(o.dateSubmitted)}</td><td>${esc(o.requester)}<br><span style="color:#77869a">${esc(o.department)}</span></td><td>${esc(o.location)}<br><span style="color:#77869a">${esc(o.specific)}</span></td><td><b>${esc(o.type)}</b><div class="desc">${esc(o.description)}</div></td><td>${pill(o.priority,priorityClass(o.priority))}${o.requestedPriority&&o.requestedPriority!==o.priority?`<div style="font-size:10px;margin-top:4px">Requested: ${esc(o.requestedPriority)}</div>`:''}</td><td>${pill(o.status,statusClass(o.status))}${isOverdue(o)?'<div class="overdue">OVERDUE</div>':''}</td><td class="${!o.dateCompleted&&o.targetDate&&o.targetDate<today()?'target-overdue':!o.dateCompleted&&o.targetDate&&o.targetDate===today()?'target-today':''}">${esc(o.targetDate||'—')}</td><td style="color:${
+  o.dateCompleted && o.targetDate && o.dateCompleted > o.targetDate
+    ? '#b42318'
+    : o.dateCompleted && o.targetDate && o.dateCompleted === o.targetDate
+      ? '#b9770e'
+      : 'inherit'
+};font-weight:${
+  o.dateCompleted && o.targetDate && o.dateCompleted >= o.targetDate
+    ? '750'
+    : 'normal'
+}">
+  ${esc(o.dateCompleted || '—')}
+</td><td><button class="small" onclick="showDetail('${o.id}')">Open</button>
+<button class="small secondary" onclick="editOrder('${o.id}')">Edit</button></td></tr>`).join('')}</tbody></table></div>`}
+function renderList(){let a=filtered();$('listTable').innerHTML=tableHTML(a)||'<div class="empty">No work orders found. Create your first work order.</div>';$('listCount').textContent=`Showing ${a.length} of ${orders.length} work orders`}
+function requireWorkOrderPassword(action, id) {
+  const password = prompt('Introduceți parola:');
+
+  if (password !== 'Class2026') {
+    if (password !== null) alert('Parolă incorectă.');
+    return;
+  }
+
+  if (action === 'open') showDetail(id);
+  if (action === 'edit') editOrder(id);
+}
+function showDetail(id){let o=orders.find(x=>x.id===id);if(!o)return;let rows=[['WO ID',o.id],['Status',o.status],['Submitted',o.dateSubmitted],['Requester',o.requester],['Department',o.department],['Location',o.location],['Request type',o.type],['Operational impact',o.impact],['Requested priority',o.requestedPriority],['Facility priority',o.priority],['Problem / request description',o.description],['Assigned to',o.assigned],['Target date',o.targetDate],['Date completed',o.dateCompleted],['Actual cost (RON)',o.actualCost],['Estimated labor hours',o.estimatedHours],['Actual labor hours',o.actualHours],['Facility notes / work performed',o.notes],['Days open / duration',age(o)+' days'],['Overdue',isOverdue(o)?'YES':'No']];$('detailPanel').innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:start"><div><h2 style="font-size:22px;margin-bottom:5px">${esc(o.id)} · Facility Work Order</h2><div>${pill(o.priority,priorityClass(o.priority))} ${pill(o.status,statusClass(o.status))} ${isOverdue(o)?pill('OVERDUE','p1'):''}</div></div><div class="actions no-print" style="margin:0"><button class="secondary" onclick="showPage('list')">Back to list</button><button onclick="editOrder('${o.id}')">Edit</button><button class="secondary" onclick="printDetail('${o.id}')">Print WO</button><button class="danger" onclick="deleteOrder('${o.id}')">Delete</button></div></div><hr style="border:0;border-top:1px solid #e3e8ef;margin:18px 0"><div class="formgrid">${rows.map(([k,v])=>`<div class="field ${['Problem / request description','Reason for priority / business impact','Facility notes / work performed'].includes(k)?'full':''}"><label>${esc(k)}</label><div style="white-space:pre-wrap;padding:4px 0">${esc(v||'—')}</div></div>`).join('')}</div>`;showPage('detail')}
+function printDetail(id){showDetail(id);setTimeout(()=>window.print(),100)}
+async function deleteOrder(id){if(!confirm('Delete work order '+id+'? This cannot be undone.'))return;try{await cloudDelete('facility_work_orders',[id]);orders=orders.filter(o=>o.id!==id)}catch(e){failCloud(e);return;}toast('Work order deleted');showPage('list')}
+async function deleteSelectedOrders() {
+  const selected = [...document.querySelectorAll('.wo-select:checked')]
+    .map(box => box.value);
+
+  if (!selected.length) {
+    alert('Selectează cel puțin un work order.');
+    return;
+  }
+
+  const password = prompt('Introduceți parola pentru ștergere:');
+  if (password === null) return;
+
+  if (password !== 'Class2026') {
+    alert('Parolă incorectă.');
+    return;
+  }
+
+  if (!confirm(`Ștergi ${selected.length} work order(e)? Această acțiune nu poate fi anulată.`)) {
+    return;
+  }
+
+  const selectedIds = new Set(selected);
+  try{await cloudDelete("facility_work_orders",selected);orders = orders.filter(order => !selectedIds.has(order.id));}catch(e){failCloud(e);return;}
+  renderList();
+  renderDashboard();
+  toast(`${selected.length} work order(e) șters(e)`);
+}
+function toast(msg){$('toast').textContent=msg;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',2600)}
+function csvEscape(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
+const csvFields=['id','dateSubmitted','requester','department','location','type','impact','requestedPriority','priority','status','description','assigned','targetDate','dateCompleted','actualCost','estimatedHours','actualHours','notes'];
+function exportCSV(){let lines=[csvFields.join(','),...orders.map(o=>csvFields.map(k=>csvEscape(o[k])).join(','))];let blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='facility_work_orders_'+today()+'.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV exported')}
+function parseCSV(text){let rows=[],row=[],val='',quoted=false;for(let i=0;i<text.length;i++){let c=text[i];if(quoted){if(c==='"'&&text[i+1]==='"'){val+='"';i++}else if(c==='"')quoted=false;else val+=c}else if(c==='"')quoted=true;else if(c===','){row.push(val);val=''}else if(c==='\n'){row.push(val.replace(/\r$/,''));rows.push(row);row=[];val=''}else val+=c}if(val.length||row.length){row.push(val.replace(/\r$/,''));rows.push(row)}return rows}
+function importCSV(e){let file=e.target.files[0];if(!file)return;let reader=new FileReader();reader.onload=async()=>{try{let r=parseCSV(String(reader.result).replace(/^\ufeff/,''));let heads=r.shift().map(x=>x.trim());let incoming=r.filter(x=>x.some(v=>v.trim())).map(row=>{let o={};heads.forEach((h,i)=>{let key=csvFields.includes(h)?h:(h==='Request ID'?'id':h);if(csvFields.includes(key))o[key]=row[i]||''});if(!o.id)o.id='FR-'+String(Date.now()+Math.random()).slice(-8);return o});if(confirm(`Import ${incoming.length} work orders? Existing IDs will be replaced.`)){let map=new Map(orders.map(o=>[o.id,o]));incoming.forEach(o=>map.set(o.id,o));await adminRequest('importOrders',{orders:incoming});orders=[...map.values()];renderDashboard();renderList();toast('Import complete')}}catch(err){alert('CSV / Supabase error: '+(err.message||err))}e.target.value=''};reader.readAsText(file)}
+const accessGate = document.getElementById('accessGate');
+const accessForm = document.getElementById('accessForm');
+document.body.classList.add('first-order');
+newOrder();
+accessForm.addEventListener('submit', async function(event){
+ event.preventDefault();
+ const password=$('accessPassword').value;
+ $('accessError').textContent='Se verifică parola în Supabase...';
+ try{
+  await adminRequest('verify',{},password);
+  adminPassword=password;
+  isAdmin=true;
+  await refreshCloud();
+  accessGate.classList.add('hidden');
+  $('accessPassword').value='';
+  document.body.classList.remove('first-order');
+  $('accessError').textContent='';
+  showPage('dashboard');
+ }catch(e){adminPassword='';isAdmin=false;$('accessError').textContent='Acces refuzat: '+(e.message||e);}
+});
+document.getElementById('togglePassword').addEventListener('click', function(){
+  const input=document.getElementById('accessPassword');
+  const showing=input.type==='text';
+  input.type=showing?'password':'text';
+  this.textContent=showing?'Afișează':'Ascunde';
+});
+renderDashboard();
+</script></body></html>
