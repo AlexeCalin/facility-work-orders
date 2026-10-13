@@ -88,6 +88,11 @@ body.first-order #page-new .panel{margin-bottom:0}
 <button onclick="exportCSV()" class="secondary">Export CSV</button><button onclick="window.print()" class="secondary">Print</button>
 <label class="secondary" style="padding:9px 12px;border-radius:7px;cursor:pointer">Import CSV <input type="file" id="importFile" accept=".csv,text/csv" style="display:none" onchange="importCSV(event)"></label>
 </div>
+<div id="pushSettings" class="panel no-print" style="display:none;margin-bottom:16px;border-left:4px solid #2463a6">
+<h2 style="margin-bottom:8px">Notificări Windows / Android</h2>
+<p style="margin:0 0 10px">Primești notificări despre cereri noi, termen azi și overdue chiar dacă pagina este închisă. Activează separat pe fiecare dispozitiv.</p>
+<div class="actions" style="justify-content:flex-start;margin:0"><button type="button" id="enablePush" onclick="enableFacilityPush()">Activează notificările</button><button type="button" class="secondary" onclick="disableFacilityPush()">Dezactivează pe acest dispozitiv</button><span id="pushStatus" style="align-self:center;color:#435267"></span></div>
+</div>
 <section id="page-dashboard">
 <div class="cards" id="metrics"></div>
 <div class="three">
@@ -614,6 +619,8 @@ accessForm.addEventListener('submit', async function(event){
   document.body.classList.remove('first-order');
   $('accessError').textContent='';
   showPage('dashboard');
+  $('pushSettings').style.display='block';
+  updatePushStatus().catch(console.error);
  }catch(e){adminPassword='';isAdmin=false;$('accessError').textContent='Acces refuzat: '+(e.message||e);}
 });
 document.getElementById('togglePassword').addEventListener('click', function(){
@@ -622,5 +629,44 @@ document.getElementById('togglePassword').addEventListener('click', function(){
   input.type=showing?'password':'text';
   this.textContent=showing?'Afișează':'Ascunde';
 });
+
+// Web Push: VAPID public key is safe to publish. The PRIVATE key remains in Supabase Secrets.
+const FACILITY_VAPID_PUBLIC='BGafEZ4PQl2eYu0ZBJbL2upd3tkcm0jRGB1Kjc6URzuEt2V2QqXWNIUEz2QZqo6AISts7ElBFrxnnMth-oqOWiI';
+const FACILITY_PUSH_URL='https://fuuhssegewbkcaladcbt.supabase.co/functions/v1/facility-push';
+function base64ToUint8Array(base64String){
+ const padding='='.repeat((4-base64String.length%4)%4);
+ const raw=atob((base64String+padding).replace(/-/g,'+').replace(/_/g,'/'));
+ return Uint8Array.from([...raw].map(x=>x.charCodeAt(0)));
+}
+async function facilityPushCall(action,payload={}){
+ const r=await fetch(FACILITY_PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':'sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4','x-facility-password':adminPassword},body:JSON.stringify({action,...payload})});
+ const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'HTTP '+r.status);return data;
+}
+async function updatePushStatus(){
+ const el=$('pushStatus');if(!el)return;
+ if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){el.textContent='Browserul nu acceptă Web Push.';return;}
+ const reg=await navigator.serviceWorker.getRegistration();const sub=reg?await reg.pushManager.getSubscription():null;
+ el.textContent=sub&&Notification.permission==='granted'?'Notificările sunt activate pe acest dispozitiv.':('Permisiune: '+Notification.permission);
+}
+async function enableFacilityPush(){
+ try{
+  if(!isAdmin)throw Error('Autentifică-te mai întâi.');
+  if(!window.isSecureContext||!('serviceWorker' in navigator)||!('PushManager' in window))throw Error('Este necesar HTTPS și un browser cu suport Push.');
+  const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('Permisiunea de notificare nu a fost acordată. Verifică setările browserului.');
+  const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});await navigator.serviceWorker.ready;
+  let sub=await reg.pushManager.getSubscription();
+  if(sub){const old=sub.options?.applicationServerKey;const expected=base64ToUint8Array(FACILITY_VAPID_PUBLIC);if(old&&b64Push(old)!==b64Push(expected)){await sub.unsubscribe();sub=null;}}
+  if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:base64ToUint8Array(FACILITY_VAPID_PUBLIC)});
+  await facilityPushCall('subscribe',{subscription:sub.toJSON()});
+  await updatePushStatus();toast('Notificările push au fost activate.');
+ }catch(e){alert('Nu s-au putut activa notificările: '+(e.message||e));}
+}
+function b64Push(buf){return Array.from(new Uint8Array(buf)).join(',')}
+async function disableFacilityPush(){
+ try{if(!isAdmin)throw Error('Autentifică-te mai întâi.');const reg=await navigator.serviceWorker.getRegistration();const sub=reg?await reg.pushManager.getSubscription():null;
+ if(sub){await facilityPushCall('unsubscribe',{endpoint:sub.endpoint});await sub.unsubscribe();}await updatePushStatus();toast('Notificările au fost dezactivate pe acest dispozitiv.');
+ }catch(e){alert('Eroare: '+(e.message||e));}
+}
+
 renderDashboard();
 </script></body></html>
