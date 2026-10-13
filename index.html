@@ -182,10 +182,15 @@ body.first-order #page-new .panel{margin-bottom:0}
 <div class="formgrid">
 <div class="field"><label>Target date</label><input id="targetDate" type="date"></div>
 <div class="field"><label>Date completed</label><input id="dateCompleted" type="date"></div>
-<div class="field"><label>Assigned to</label><input id="assigned" placeholder="Facility Team / contractor"></div>
+<div class="field"><label>Assigned to 1</label><select id="assigned1" onchange="updateAssignmentHours()"></select></div>
+<div class="field"><label>Actual hours · Technician 1</label><input id="assignedHours1" type="number" min="0" step="0.25" value="0" oninput="updateAssignmentHours()"></div>
+<div class="field"><label>Assigned to 2</label><select id="assigned2" onchange="updateAssignmentHours()"></select></div>
+<div class="field"><label>Actual hours · Technician 2</label><input id="assignedHours2" type="number" min="0" step="0.25" value="0" oninput="updateAssignmentHours()"></div>
+<div class="field"><label>Assigned to 3</label><select id="assigned3" onchange="updateAssignmentHours()"></select></div>
+<div class="field"><label>Actual hours · Technician 3</label><input id="assignedHours3" type="number" min="0" step="0.25" value="0" oninput="updateAssignmentHours()"></div>
 <div class="field"><label>Actual cost (RON)</label><input id="actualCost" type="number" min="0" step="0.01"></div>
 <div class="field"><label>Estimated labor hours</label><input id="estimatedHours" type="number" min="0" step="0.25" placeholder="e.g. 3.5"></div>
-<div class="field"><label>Actual labor hours</label><input id="actualHours" type="number" min="0" step="0.25" placeholder="e.g. 2.5"></div>
+<div class="field"><label>Actual labor hours</label><input id="actualHours" type="number" min="0" step="0.25" placeholder="Calculated from assigned technicians" readonly></div>
 <div class="field full"><label>Facility notes / work performed</label><textarea id="notes" placeholder="Actions taken, materials, follow-up..."></textarea></div>
 </div>
 <div class="actions"><button type="button" class="secondary" onclick="if(document.body.classList.contains('first-order')){document.body.classList.remove('first-order');$('accessPassword').value='';$('accessError').textContent='';$('accessGate').classList.remove('hidden')}else showPage('list')">Cancel</button><button type="submit">Save Work Order</button></div>
@@ -217,7 +222,7 @@ async function refreshCloud(){
  if(!isAdmin)return;
  const data=await adminRequest('list');
  orders=data.orders||[];technicians=data.technicians||[];
- renderDashboard();renderList();renderTechnicians();
+ renderDashboard();renderList();renderTechnicians();renderAssignmentOptions();
 }
 async function publicRequest(o){
  const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':'sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4'},body:JSON.stringify({action:'createRequest',order:o})});
@@ -258,10 +263,51 @@ function showPage(page){
   if(page==='technicians')renderTechnicians();
   window.scrollTo(0,0);
 }
-function newOrder(){ $('woForm').reset();$('editId').value='';$('formTitle').textContent='Create Facility Work Order';$('requestDate').value=today();$('status').value='New';$('priority').value='P3 - Normal';$('requestedPriority').value='P3 - Normal';showPage('new')}
+// Multiple technicians per work order; persisted in existing Supabase JSON data.
+function techName(t){return `${t.firstName||''} ${t.lastName||''}`.trim()}
+function renderAssignmentOptions(){
+ const names=technicians.map(techName).filter(Boolean);
+ for(let i=1;i<=3;i++){
+  const el=$('assigned'+i),old=el.value;
+  el.innerHTML='<option value="">-- Select technician --</option>'+names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  if(old&&!names.includes(old))el.insertAdjacentHTML('beforeend',`<option value="${esc(old)}">${esc(old)} (existing)</option>`);
+  el.value=old;
+ }
+}
+function updateAssignmentHours(){
+ const selected=[];let total=0;
+ for(let i=1;i<=3;i++){
+  const name=$('assigned'+i).value, hours=Number($('assignedHours'+i).value||0);
+  if(name)selected.push(name);
+  if(name&&Number.isFinite(hours)&&hours>=0)total+=hours;
+  $('assignedHours'+i).disabled=!name;
+ }
+ $('actualHours').value=total?total.toFixed(2):'0';
+}
+function getAssignments(){return [1,2,3].map(i=>({technician:$('assigned'+i).value,hours:Number($('assignedHours'+i).value||0)})).filter(x=>x.technician)}
+function loadAssignments(o){
+ renderAssignmentOptions();
+ const a=Array.isArray(o.assignments)?o.assignments:(o.assigned?[{technician:o.assigned,hours:Number(o.actualHours)||0}]:[]);
+ for(let i=1;i<=3;i++){
+  const item=a[i-1];const el=$('assigned'+i);const name=item?.technician||'';
+  if(name&&![...el.options].some(x=>x.value===name))el.add(new Option(name+' (existing)',name));
+  el.value=name;$('assignedHours'+i).value=item?.hours??0;
+ }
+ updateAssignmentHours();
+}
+function validAssignments(){
+ const a=getAssignments(),names=a.map(x=>x.technician);
+ if(new Set(names).size!==names.length){alert('Același tehnician nu poate fi selectat de două ori.');return false;}
+ for(let i=1;i<=3;i++){
+  if(!$('assigned'+i).value&&Number($('assignedHours'+i).value||0)>0){alert('Selectează tehnicianul pentru orele introduse.');return false;}
+  if(Number($('assignedHours'+i).value||0)<0){alert('Orele nu pot fi negative.');return false;}
+ }
+ return true;
+}
+function newOrder(){ $('woForm').reset();loadAssignments({});$('editId').value='';$('formTitle').textContent='Create Facility Work Order';$('requestDate').value=today();$('status').value='New';$('priority').value='P3 - Normal';$('requestedPriority').value='P3 - Normal';showPage('new')}
 async function saveOrder(e){
-e.preventDefault();if(busy)return;busy=true;let id=$('editId').value;let existing=orders.find(o=>o.id===id);let o={id:id||'FR-'+String(Date.now()).slice(-8),created:existing?.created||new Date().toISOString(),updated:new Date().toISOString()};
-[['requester','requester'],['department','department'],['requestDate','dateSubmitted'],['location','location'],['type','type'],['impact','impact'],['requestedPriority','requestedPriority'],['priority','priority'],['status','status'],['description','description'],['assigned','assigned'],['targetDate','targetDate'],['actualCost','actualCost'],['estimatedHours','estimatedHours'],['actualHours','actualHours'],['dateCompleted','dateCompleted'],['notes','notes']].forEach(([a,b])=>o[b]=$(a).value);if (o.dateCompleted) {
+e.preventDefault();if(busy||!validAssignments())return;busy=true;let id=$('editId').value;let existing=orders.find(o=>o.id===id);let o={id:id||'FR-'+String(Date.now()).slice(-8),created:existing?.created||new Date().toISOString(),updated:new Date().toISOString()};
+[['requester','requester'],['department','department'],['requestDate','dateSubmitted'],['location','location'],['type','type'],['impact','impact'],['requestedPriority','requestedPriority'],['priority','priority'],['status','status'],['description','description'],['targetDate','targetDate'],['actualCost','actualCost'],['estimatedHours','estimatedHours'],['actualHours','actualHours'],['dateCompleted','dateCompleted'],['notes','notes']].forEach(([a,b])=>o[b]=$(a).value);o.assignments=getAssignments();o.assigned=o.assignments.map(a=>a.technician).join(', ');o.actualHours=String(o.assignments.reduce((sum,a)=>sum+a.hours,0));if (o.dateCompleted) {
   o.status = 'Closed';
 }
 if(!o.dateStarted&&o.status==='In Progress')o.dateStarted=today();if(!o.dateCompleted&&['Completed','Closed'].includes(o.status))o.dateCompleted=today();
@@ -282,8 +328,8 @@ if(document.body.classList.contains('first-order')){
 }
 toast(existing?'Work Order updated':'Work Order created: '+o.id);showDetail(o.id)}
 function editOrder(id){let o=orders.find(x=>x.id===id);if(!o)return;newOrder();$('formTitle').textContent='Edit Work Order · '+o.id;$('editId').value=o.id;
-const m={requester:'requester',department:'department',dateSubmitted:'requestDate',location:'location',type:'type',impact:'impact',requestedPriority:'requestedPriority',priority:'priority',status:'status',description:'description',assigned:'assigned',targetDate:'targetDate',actualCost:'actualCost',estimatedHours:'estimatedHours',actualHours:'actualHours',dateCompleted:'dateCompleted',notes:'notes'};
-Object.entries(m).forEach(([k,v])=>$(v).value=o[k]??'');showPage('new')}
+const m={requester:'requester',department:'department',dateSubmitted:'requestDate',location:'location',type:'type',impact:'impact',requestedPriority:'requestedPriority',priority:'priority',status:'status',description:'description',targetDate:'targetDate',actualCost:'actualCost',estimatedHours:'estimatedHours',actualHours:'actualHours',dateCompleted:'dateCompleted',notes:'notes'};
+Object.entries(m).forEach(([k,v])=>$(v).value=o[k]??'');loadAssignments(o);showPage('new')}
 function isClosed(o){return ['Completed','Closed','Rejected'].includes(o.status)}
 function isOverdue(o){return o.targetDate&&o.targetDate<today()&&!isClosed(o)}
 function priorityClass(p){return 'p'+(priorities.indexOf(p)+1||4)}
@@ -501,11 +547,12 @@ function renderTechnicians(){
   const rows=technicians.map(t=>{
     const name=`${t.firstName} ${t.lastName}`.trim().toLowerCase();
     const hours=orders.reduce((sum,o)=>{
-      const assigned=String(o.assigned||'').trim().toLowerCase();
       const workDate=o.dateCompleted||o.dateStarted||'';
-      return sum+(assigned===name&&workDate.startsWith(month)
-        ? Number(o.actualHours)||0
-        : 0);
+      if(!workDate.startsWith(month))return sum;
+      if(Array.isArray(o.assignments)&&o.assignments.length){
+       return sum+o.assignments.reduce((n,a)=>n+(String(a.technician||'').trim().toLowerCase()===name?(Number(a.hours)||0):0),0);
+      }
+      return sum+(String(o.assigned||'').trim().toLowerCase()===name?(Number(o.actualHours)||0):0);
     },0);
     const capacity=monthlyCapacity(t,month);
     const percent=capacity>0?hours/capacity*100:0;
@@ -552,7 +599,7 @@ function requireWorkOrderPassword(action, id) {
   if (action === 'open') showDetail(id);
   if (action === 'edit') editOrder(id);
 }
-function showDetail(id){let o=orders.find(x=>x.id===id);if(!o)return;let rows=[['WO ID',o.id],['Status',o.status],['Submitted',o.dateSubmitted],['Requester',o.requester],['Department',o.department],['Location',o.location],['Request type',o.type],['Operational impact',o.impact],['Requested priority',o.requestedPriority],['Facility priority',o.priority],['Problem / request description',o.description],['Assigned to',o.assigned],['Target date',o.targetDate],['Date completed',o.dateCompleted],['Actual cost (RON)',o.actualCost],['Estimated labor hours',o.estimatedHours],['Actual labor hours',o.actualHours],['Facility notes / work performed',o.notes],['Days open / duration',age(o)+' days'],['Overdue',isOverdue(o)?'YES':'No']];$('detailPanel').innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:start"><div><h2 style="font-size:22px;margin-bottom:5px">${esc(o.id)} · Facility Work Order</h2><div>${pill(o.priority,priorityClass(o.priority))} ${pill(o.status,statusClass(o.status))} ${isOverdue(o)?pill('OVERDUE','p1'):''}</div></div><div class="actions no-print" style="margin:0"><button class="secondary" onclick="showPage('list')">Back to list</button><button onclick="editOrder('${o.id}')">Edit</button><button class="secondary" onclick="printDetail('${o.id}')">Print WO</button><button class="danger" onclick="deleteOrder('${o.id}')">Delete</button></div></div><hr style="border:0;border-top:1px solid #e3e8ef;margin:18px 0"><div class="formgrid">${rows.map(([k,v])=>`<div class="field ${['Problem / request description','Reason for priority / business impact','Facility notes / work performed'].includes(k)?'full':''}"><label>${esc(k)}</label><div style="white-space:pre-wrap;padding:4px 0">${esc(v||'—')}</div></div>`).join('')}</div>`;showPage('detail')}
+function showDetail(id){let o=orders.find(x=>x.id===id);if(!o)return;let rows=[['WO ID',o.id],['Status',o.status],['Submitted',o.dateSubmitted],['Requester',o.requester],['Department',o.department],['Location',o.location],['Request type',o.type],['Operational impact',o.impact],['Requested priority',o.requestedPriority],['Facility priority',o.priority],['Problem / request description',o.description],['Assigned to',o.assignments?.length?o.assignments.map(a=>`${a.technician} (${Number(a.hours)||0} h)`).join('\n'):o.assigned],['Target date',o.targetDate],['Date completed',o.dateCompleted],['Actual cost (RON)',o.actualCost],['Estimated labor hours',o.estimatedHours],['Actual labor hours',o.actualHours],['Facility notes / work performed',o.notes],['Days open / duration',age(o)+' days'],['Overdue',isOverdue(o)?'YES':'No']];$('detailPanel').innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:start"><div><h2 style="font-size:22px;margin-bottom:5px">${esc(o.id)} · Facility Work Order</h2><div>${pill(o.priority,priorityClass(o.priority))} ${pill(o.status,statusClass(o.status))} ${isOverdue(o)?pill('OVERDUE','p1'):''}</div></div><div class="actions no-print" style="margin:0"><button class="secondary" onclick="showPage('list')">Back to list</button><button onclick="editOrder('${o.id}')">Edit</button><button class="secondary" onclick="printDetail('${o.id}')">Print WO</button><button class="danger" onclick="deleteOrder('${o.id}')">Delete</button></div></div><hr style="border:0;border-top:1px solid #e3e8ef;margin:18px 0"><div class="formgrid">${rows.map(([k,v])=>`<div class="field ${['Problem / request description','Reason for priority / business impact','Facility notes / work performed'].includes(k)?'full':''}"><label>${esc(k)}</label><div style="white-space:pre-wrap;padding:4px 0">${esc(v||'—')}</div></div>`).join('')}</div>`;showPage('detail')}
 function printDetail(id){showDetail(id);setTimeout(()=>window.print(),100)}
 async function deleteOrder(id){if(!confirm('Delete work order '+id+'? This cannot be undone.'))return;try{await cloudDelete('facility_work_orders',[id]);orders=orders.filter(o=>o.id!==id)}catch(e){failCloud(e);return;}toast('Work order deleted');showPage('list')}
 async function deleteSelectedOrders() {
@@ -584,10 +631,10 @@ async function deleteSelectedOrders() {
 }
 function toast(msg){$('toast').textContent=msg;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',2600)}
 function csvEscape(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
-const csvFields=['id','dateSubmitted','requester','department','location','type','impact','requestedPriority','priority','status','description','assigned','targetDate','dateCompleted','actualCost','estimatedHours','actualHours','notes'];
-function exportCSV(){let lines=[csvFields.join(','),...orders.map(o=>csvFields.map(k=>csvEscape(o[k])).join(','))];let blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='facility_work_orders_'+today()+'.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV exported')}
+const csvFields=['assignments','id','dateSubmitted','requester','department','location','type','impact','requestedPriority','priority','status','description','assigned','targetDate','dateCompleted','actualCost','estimatedHours','actualHours','notes'];
+function exportCSV(){let lines=[csvFields.join(','),...orders.map(o=>csvFields.map(k=>csvEscape(k==='assignments'?JSON.stringify(o.assignments||[]):o[k])).join(','))];let blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='facility_work_orders_'+today()+'.csv';a.click();URL.revokeObjectURL(a.href);toast('CSV exported')}
 function parseCSV(text){let rows=[],row=[],val='',quoted=false;for(let i=0;i<text.length;i++){let c=text[i];if(quoted){if(c==='"'&&text[i+1]==='"'){val+='"';i++}else if(c==='"')quoted=false;else val+=c}else if(c==='"')quoted=true;else if(c===','){row.push(val);val=''}else if(c==='\n'){row.push(val.replace(/\r$/,''));rows.push(row);row=[];val=''}else val+=c}if(val.length||row.length){row.push(val.replace(/\r$/,''));rows.push(row)}return rows}
-function importCSV(e){let file=e.target.files[0];if(!file)return;let reader=new FileReader();reader.onload=async()=>{try{let r=parseCSV(String(reader.result).replace(/^\ufeff/,''));let heads=r.shift().map(x=>x.trim());let incoming=r.filter(x=>x.some(v=>v.trim())).map(row=>{let o={};heads.forEach((h,i)=>{let key=csvFields.includes(h)?h:(h==='Request ID'?'id':h);if(csvFields.includes(key))o[key]=row[i]||''});if(!o.id)o.id='FR-'+String(Date.now()+Math.random()).slice(-8);return o});if(confirm(`Import ${incoming.length} work orders? Existing IDs will be replaced.`)){let map=new Map(orders.map(o=>[o.id,o]));incoming.forEach(o=>map.set(o.id,o));await adminRequest('importOrders',{orders:incoming});orders=[...map.values()];renderDashboard();renderList();toast('Import complete')}}catch(err){alert('CSV / Supabase error: '+(err.message||err))}e.target.value=''};reader.readAsText(file)}
+function importCSV(e){let file=e.target.files[0];if(!file)return;let reader=new FileReader();reader.onload=async()=>{try{let r=parseCSV(String(reader.result).replace(/^\ufeff/,''));let heads=r.shift().map(x=>x.trim());let incoming=r.filter(x=>x.some(v=>v.trim())).map(row=>{let o={};heads.forEach((h,i)=>{let key=csvFields.includes(h)?h:(h==='Request ID'?'id':h);if(csvFields.includes(key)){if(key==='assignments'){try{o[key]=JSON.parse(row[i]||'[]')}catch{o[key]=[]}}else o[key]=row[i]||''}});if(!o.id)o.id='FR-'+String(Date.now()+Math.random()).slice(-8);return o});if(confirm(`Import ${incoming.length} work orders? Existing IDs will be replaced.`)){let map=new Map(orders.map(o=>[o.id,o]));incoming.forEach(o=>map.set(o.id,o));await adminRequest('importOrders',{orders:incoming});orders=[...map.values()];renderDashboard();renderList();toast('Import complete')}}catch(err){alert('CSV / Supabase error: '+(err.message||err))}e.target.value=''};reader.readAsText(file)}
 const accessGate = document.getElementById('accessGate');
 const accessForm = document.getElementById('accessForm');
 document.body.classList.add('first-order');
@@ -655,6 +702,6 @@ async function disableFacilityPush(){
  }catch(e){alert('Eroare: '+(e.message||e));}
 }
 
-$('technicianMonth').value=new Date().toISOString().slice(0,7);loadTechnicianMonth();
+$('technicianMonth').value=new Date().toISOString().slice(0,7);loadTechnicianMonth();renderAssignmentOptions();
 renderDashboard();
 </script></body></html>
