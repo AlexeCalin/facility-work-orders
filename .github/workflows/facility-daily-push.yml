@@ -1,0 +1,19 @@
+name: Facility daily push notifications
+on:
+  schedule:
+    - cron: '7 5,6 * * *' # 08:07 Romania, depending on daylight saving time
+  workflow_dispatch:
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Supabase daily notifications
+        env:
+          PUSH_SECRET: ${{ secrets.FACILITY_PUSH_INTERNAL_SECRET }}
+        run: |
+          if [ -z "$PUSH_SECRET" ]; then echo "Missing GitHub secret FACILITY_PUSH_INTERNAL_SECRET"; exit 1; fi
+          curl --fail-with-body --retry 2 --max-time 120 -X POST \
+            'https://fuuhssegewbkcaladcbt.supabase.co/functions/v1/facility-push' \
+            -H 'Content-Type: application/json' \
+            -H "x-internal-secret: $PUSH_SECRET" \
+            -d '{"action":"daily"}'
