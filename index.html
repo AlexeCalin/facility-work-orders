@@ -66,8 +66,13 @@ body.first-order #page-new #facilityAdminFields{display:none!important}
 body.first-order #page-new .requester-note{margin-bottom:0}
 
 
+/* Buton de revenire la portal, vizibil inclusiv in formularul initial. */
+.portal-back{position:fixed;right:16px;bottom:16px;z-index:10001;display:inline-flex;align-items:center;gap:7px;padding:11px 15px;background:#17324d;color:#fff;text-decoration:none;border:1px solid #dce3ec;border-radius:9px;box-shadow:0 4px 16px #0003;font-weight:700;font-size:13px}
+.portal-back:hover,.portal-back:focus{background:#2463a6;color:#fff}
+@media print{.portal-back{display:none!important}}
 </style></head>
 <body>
+<a class="portal-back" href="https://alexecalin.github.io/" aria-label="Înapoi la meniul principal">&#8592; Meniu principal</a>
 <div id="accessGate" class="hidden">
   <div class="access-box">
     <h2>Acces pagină principală</h2>
