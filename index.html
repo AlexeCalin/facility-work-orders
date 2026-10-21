@@ -94,6 +94,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 <button id="tab-list" onclick="showPage('list')">All Work Orders</button>
 <button id="tab-technicians" onclick="showPage('technicians')">Technicians & workload</button>
 <button id="tab-new" onclick="newOrder()">＋ Create Work Order</button>
+<button id="tab-pm" onclick="showPage('pm')">Preventive Maintenance</button>
 <button id="tab-settings" onclick="showPage('settings')">⚙ Settings</button>
 <button onclick="exportExcel()" class="secondary">Export Excel</button> <button onclick="exportCSV()" class="secondary">Export CSV</button><button onclick="window.print()" class="secondary">Print</button>
 <label class="secondary" style="padding:9px 12px;border-radius:7px;cursor:pointer">Import CSV <input type="file" id="importFile" accept=".csv,text/csv" style="display:none" onchange="importCSV(event)"></label>
@@ -113,6 +114,21 @@ body.first-order #page-new .requester-note{margin-bottom:0}
   <div id="monthlyCosts"></div>
 </div>
 </section>
+<section id="page-pm" class="hidden">
+<div class="panel"><h2>Preventive Maintenance · Facilities</h2><p class="subnote">Planuri independente de mentenanța echipamentelor de producție. Datele sunt salvate local în acest browser.</p>
+<div class="nav"><button onclick="pmTab('due')" id="pm-tab-due">New · This week</button><button onclick="pmTab('overdue')" id="pm-tab-overdue">Overdue</button><button onclick="pmTab('plans')" id="pm-tab-plans">Defined plans</button><button onclick="pmTab('history')" id="pm-tab-history">History</button><button onclick="pmTab('stats')" id="pm-tab-stats">Statistics</button></div>
+<div id="pm-summary" class="cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
+<div id="pm-plan-editor" class="panel hidden" style="background:#f8fafc"><h2 id="pm-editor-title">Define preventive plan</h2><form id="pmForm" onsubmit="pmSave(event)"><input type="hidden" id="pm-id"><div class="formgrid">
+<div class="field"><label>Building / Area *</label><select id="pm-area" required></select></div>
+<div class="field"><label>Installation / Asset *</label><input id="pm-asset" required placeholder="e.g. Fire pump, HVAC, roof"></div>
+<div class="field"><label>Task / Check *</label><input id="pm-task" required></div>
+<div class="field"><label>Frequency *</label><select id="pm-frequency"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Every 2 weeks</option><option value="monthly" selected>Monthly</option><option value="quarterly">Quarterly</option><option value="semiannual">Every 6 months</option><option value="annual">Annually</option></select></div>
+<div class="field"><label>Next due date *</label><input type="date" id="pm-due" required></div>
+<div class="field"><label>Assigned to *</label><select id="pm-assigned" required></select></div>
+<div class="field"><label>Estimated labor hours *</label><input id="pm-estimated-hours" type="number" min="0" step="0.25" required placeholder="e.g. 2.5"></div>
+<div class="field full"><label>Instructions / Checklist</label><textarea id="pm-instructions"></textarea></div></div><div class="actions"><button type="button" class="secondary" onclick="pmCloseEditor()">Cancel</button><button type="submit">Save plan</button></div></form></div>
+<div id="pm-toolbar" class="actions" style="justify-content:flex-start"><button onclick="pmNew()">+ Define preventive plan</button><select id="pm-filter" onchange="pmRender()" style="max-width:280px"></select></div>
+<div id="pm-content"></div></div></section>
 <section id="page-technicians" class="hidden">
   <div class="panel">
     <h2>Monthly technician workload</h2>
@@ -235,7 +251,7 @@ async function refreshCloud(){
  if(!isAdmin)return;
  const data=await adminRequest('list');
  orders=data.orders||[];technicians=data.technicians||[];
- renderDashboard();renderList();renderTechnicians();renderAssignmentOptions();
+ renderDashboard();renderList();renderTechnicians();renderAssignmentOptions();if(typeof pmRefresh==='function')await pmRefresh();
 }
 async function publicRequest(o){
  const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':'sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4'},body:JSON.stringify({action:'createRequest',order:o,newAttachments:o.newAttachments||[]})});
@@ -267,13 +283,14 @@ function options(id,arr,first){$(id).innerHTML=(first?'<option value="">'+first+
 options('location',locations,'Select location');options('type',types,'Select request type');options('status',statuses);
 options('fStatus',statuses,'All statuses');options('fLocation',locations,'All locations');options('fType',types,'All request types');
 function showPage(page){
-  ['dashboard','list','new','detail','technicians','settings'].forEach(p=>{
+  ['dashboard','list','new','detail','technicians','settings','pm'].forEach(p=>{
     $('page-'+p).classList.toggle('hidden',p!==page);
   });
   document.querySelectorAll('.nav button[id^=tab-]').forEach(b=>{
     b.classList.toggle('active',b.id==='tab-'+page);
   });
-  if(page==='dashboard')renderDashboard();
+  if(page==='pm'){pmRender();pmRefresh();}
+   if(page==='dashboard')renderDashboard();
   if(page==='list')renderList();
   if(page==='technicians')renderTechnicians();
    if(page==='settings'){renderTechnicians();updatePushStatus().catch(console.error);}
@@ -569,7 +586,7 @@ function renderTechnicians(){
 
   const rows=technicians.map(t=>{
     const name=`${t.firstName} ${t.lastName}`.trim().toLowerCase();
-    const hours=orders.reduce((sum,o)=>{
+    const woHours=orders.reduce((sum,o)=>{
       const workDate=o.dateCompleted||o.dateStarted||'';
       if(!workDate.startsWith(month))return sum;
       if(Array.isArray(o.assignments)&&o.assignments.length){
@@ -577,12 +594,16 @@ function renderTechnicians(){
       }
       return sum+(String(o.assigned||'').trim().toLowerCase()===name?(Number(o.actualHours)||0):0);
     },0);
+    const pmHours=pmHistory.reduce((sum,h)=>sum+(String(h.completed||'').startsWith(month)&&String(h.performedBy||'').trim().toLowerCase()===name?(Number(h.hours)||0):0),0);
+    const hours=woHours+pmHours;
     const capacity=monthlyCapacity(t,month);
     const percent=capacity>0?hours/capacity*100:0;
 
     return `<tr>
       <td>${esc(t.firstName)} ${esc(t.lastName)}</td>
-      <td>${hours.toFixed(2)}</td>
+      <td>${woHours.toFixed(2)}</td>
+      <td>${pmHours.toFixed(2)}</td>
+      <td><b>${hours.toFixed(2)}</b></td>
       <td>${capacity.toFixed(2)}</td>
       <td><b>${percent.toFixed(1)}%</b></td>
     </tr>`;
@@ -590,7 +611,7 @@ function renderTechnicians(){
 
   $('monthlyWorkload').innerHTML=technicians.length
     ? `<div class="tablewrap"><table>
-        <thead><tr><th>Technician</th><th>Actual hours · ${esc(month)}</th><th>Monthly capacity</th><th>Workload</th></tr></thead>
+        <thead><tr><th>Technician</th><th>Work Orders hours</th><th>Preventive hours</th><th>Total actual hours · ${esc(month)}</th><th>Monthly capacity</th><th>Workload</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`
     : '<div class="empty">Add technicians to see monthly workload.</div>';
@@ -729,5 +750,71 @@ async function disableFacilityPush(){
 }
 
 $('technicianMonth').value=new Date().toISOString().slice(0,7);loadTechnicianMonth();renderAssignmentOptions();
+// Independent Facility Preventive Maintenance module
+const PM_KEY='facility_preventive_plans_v1', PM_HISTORY_KEY='facility_preventive_history_v1';
+let pmPlans=[],pmHistory=[],pmMode='due';
+let pmLoaded=false;
+const pmFreq={daily:'Daily',weekly:'Weekly',biweekly:'Every 2 weeks',monthly:'Monthly',quarterly:'Quarterly',semiannual:'Every 6 months',annual:'Annually'};
+function pmLoad(k){try{const v=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(v)?v:[]}catch(e){return []}}
+const PM_EDGE_URL='https://fuuhssegewbkcaladcbt.supabase.co/functions/v1/facility-preventive';
+async function pmCloud(action,payload={}){
+ if(!isAdmin||!adminPassword)throw Error('Autentifică-te ca administrator pentru mentenanța preventivă.');
+ const res=await fetch(PM_EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':'sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4','x-facility-password':adminPassword},body:JSON.stringify({action,...payload})});
+ let data;try{data=await res.json()}catch{throw Error('Răspuns invalid de la facility-preventive.')}
+ if(!res.ok)throw Error(data.error||'HTTP '+res.status);
+ return data;
+}
+async function pmRefresh(){
+ try{const data=await pmCloud('list');pmPlans=data.plans||[];pmHistory=data.history||[];pmLoaded=true;pmRender();renderTechnicians();}
+ catch(e){pmLoaded=false;$('pm-content').innerHTML='<div class="empty">Eroare Supabase: '+esc(e.message)+'</div>';alert('Preventive Maintenance: '+e.message);}
+}
+function pmToday(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
+function pmShift(date,freq){const d=new Date(date+'T12:00:00');if(isNaN(d))return date;let days={daily:1,weekly:7,biweekly:14}[freq];if(days){d.setDate(d.getDate()+days)}else{let months={monthly:1,quarterly:3,semiannual:6,annual:12}[freq]||1;const day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+months);const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();d.setDate(Math.min(day,last))}return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
+function pmWeekEnd(){let d=new Date(pmToday()+'T12:00:00');d.setDate(d.getDate()+(7-d.getDay())%7);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
+function pmTab(mode){pmMode=mode;pmCloseEditor();pmRender()}
+function pmCloseEditor(){$('pm-plan-editor').classList.add('hidden')}
+function pmTechnicianOptions(selected=''){const names=technicians.map(techName).filter(Boolean);const sel=$('pm-assigned');sel.innerHTML='<option value="">-- Select technician --</option>'+names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join('');if(selected&&!names.includes(selected))sel.add(new Option(selected+' (existing)',selected));sel.value=selected;}
+function pmNew(id){let p=pmPlans.find(x=>x.id===id);$('pmForm').reset();$('pm-id').value=p?.id||'';$('pm-editor-title').textContent=p?'Edit preventive plan':'Define preventive plan';$('pm-area').value=p?.area||'';$('pm-asset').value=p?.asset||'';$('pm-task').value=p?.task||'';$('pm-frequency').value=p?.freq||'monthly';$('pm-due').value=p?.due||pmToday();pmTechnicianOptions(p?.assigned||'');$('pm-estimated-hours').value=p?.estimatedHours??'';$('pm-instructions').value=p?.instructions||'';$('pm-plan-editor').classList.remove('hidden');$('pm-plan-editor').scrollIntoView({behavior:'smooth',block:'start'})}
+async function pmSave(e){
+ e.preventDefault();const id=$('pm-id').value;
+ const p={id:id||'FPM-'+Date.now(),area:$('pm-area').value,asset:$('pm-asset').value.trim(),task:$('pm-task').value.trim(),freq:$('pm-frequency').value,due:$('pm-due').value,assigned:$('pm-assigned').value.trim(),estimatedHours:Number($('pm-estimated-hours').value),instructions:$('pm-instructions').value.trim()};
+ if(!p.area||!p.asset||!p.task||!p.due||!p.assigned||!Number.isFinite(p.estimatedHours)||p.estimatedHours<0)return;
+ try{await pmCloud('savePlan',{plan:p});await pmRefresh();pmCloseEditor();pmMode='plans';pmRender();toast('Plan saved in Supabase');}catch(e){alert('Nu s-a salvat: '+e.message)}
+}
+async function pmComplete(id){
+ const p=pmPlans.find(x=>x.id===id);if(!p)return;
+ const date=prompt('Completion date (YYYY-MM-DD):',pmToday());if(date===null)return;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(new Date(date+'T12:00:00').getTime())){alert('Invalid date');return}
+ const person=prompt('Performed by:',p.assigned||'');if(person===null)return;
+ const notes=prompt('Work performed / notes:','');if(notes===null)return;
+ const hours=prompt('Actual labor hours:',String(p.estimatedHours??''));if(hours===null)return;
+ if(!hours.trim()||!Number.isFinite(Number(hours))||Number(hours)<0){alert('Invalid labor hours');return}
+ const previous=p.due;let next=pmShift(previous,p.freq),guard=0;
+ while(next<=date&&guard++<10000){const n=pmShift(next,p.freq);if(n<=next)break;next=n}
+ try{await pmCloud('complete',{planId:id,expectedDue:previous,execution:{id:'EXEC-'+Date.now(),planId:p.id,area:p.area,asset:p.asset,task:p.task,scheduled:previous,completed:date,performedBy:person,notes,hours:Number(hours),estimatedHours:Number(p.estimatedHours)||0},nextDue:next});await pmRefresh();renderTechnicians();toast('Execution saved in Supabase; next due: '+next)}catch(e){alert('Nu s-a salvat execuția: '+e.message)}
+}
+async function pmDelete(id){
+ if(!confirm('Ștergi planul și TOATE execuțiile asociate? Orele vor fi eliminate din workload.'))return;
+ try{await pmCloud('deletePlan',{id});await pmRefresh();toast('Plan deleted')}catch(e){alert(e.message)}
+}
+async function pmHistoryEdit(id){
+ const h=pmHistory.find(x=>x.id===id);if(!h)return;
+ const hours=prompt('Corectează orele efectiv lucrate:',String(h.hours??0));if(hours===null)return;
+ if(!hours.trim()||!Number.isFinite(Number(hours))||Number(hours)<0){alert('Introdu un număr valid de ore.');return;}
+ const person=prompt('Tehnician:',h.performedBy||'');if(person===null)return;
+ const known=technicians.map(techName);
+ if(!known.includes(person.trim())){alert('Selectează numele exact al unui tehnician existent: '+known.join(', '));return;}
+ const completed=prompt('Data execuției (YYYY-MM-DD):',h.completed);if(completed===null)return;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(completed)||isNaN(Date.parse(completed+'T12:00:00'))){alert('Dată invalidă.');return;}
+ try{await pmCloud('updateHistory',{id,execution:{...h,hours:Number(hours),performedBy:person.trim(),completed}});await pmRefresh();toast('Orele corectate în Supabase și workload recalculat.')}catch(e){alert('Corectarea a eșuat: '+e.message)}
+}
+async function pmHistoryDelete(id){
+ if(!confirm('Delete this execution history record?'))return;
+ try{await pmCloud('deleteHistory',{id});await pmRefresh()}catch(e){alert(e.message)}
+}
+function pmExport(){const headers=['record','id','area','asset','task','frequency','due','scheduled','completed','performedBy','assigned','estimatedHours','hours','notes','instructions'];const rows=[...pmPlans.map(p=>({record:'plan',...p})),...pmHistory.map(h=>({record:'execution',...h}))];const csv=[headers.join(','),...rows.map(r=>headers.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');const a=document.createElement('a'),url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.href=url;a.download='facility_preventive_'+pmToday()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function pmRender(){if(!$('page-pm'))return;const t=pmToday(),end=pmWeekEnd();const filter=$('pm-filter');const previous=filter.value;filter.innerHTML='<option value="">All areas</option>'+locations.map(l=>'<option value="'+esc(l)+'">'+esc(l)+'</option>').join('');filter.value=locations.includes(previous)?previous:'';const area=filter.value;const list=pmPlans.filter(p=>!area||p.area===area);const late=list.filter(p=>p.due<t),week=list.filter(p=>p.due>=t&&p.due<=end);$('pm-summary').innerHTML=metric('Defined plans',list.length,'Facilities only')+metric('Due this week',week.length,'Today through Sunday')+metric('Overdue',late.length,'Before today')+metric('Executions',pmHistory.filter(h=>!area||h.area===area).length,'Saved history');['due','overdue','plans','history','stats'].forEach(k=>$('pm-tab-'+k).classList.toggle('active',k===pmMode));let html='';if(['due','overdue','plans'].includes(pmMode)){const arr=(pmMode==='due'?week:pmMode==='overdue'?late:list).slice().sort((a,b)=>a.due.localeCompare(b.due));html='<div class="tablewrap"><table><thead><tr><th>Area</th><th>Asset</th><th>Task</th><th>Frequency</th><th>Assigned</th><th>Next due</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+arr.map(p=>'<tr><td>'+esc(p.area)+'</td><td>'+esc(p.asset)+'</td><td><b>'+esc(p.task)+'</b><div class="subnote">'+esc(p.instructions)+'</div></td><td>'+esc(pmFreq[p.freq]||p.freq)+'</td><td>'+esc(p.assigned||'—')+'</td><td>'+esc(p.estimatedHours??'—')+'</td><td style="font-weight:700;color:'+(p.due<t?'#b42318':p.due===t?'#b9770e':'inherit')+'">'+esc(p.due)+'</td><td>'+esc(p.due<t?'Overdue':p.due===t?'Due today':'Planned')+'</td><td><button class="small" onclick="pmComplete(\''+esc(p.id)+'\')">Complete</button> <button class="small secondary" onclick="pmNew(\''+esc(p.id)+'\')">Edit</button> <button class="small danger" onclick="pmDelete(\''+esc(p.id)+'\')">Delete</button></td></tr>').join('')+'</tbody></table></div>';if(!arr.length)html='<div class="empty">No preventive plans in this view.</div>'}else if(pmMode==='history'){const arr=pmHistory.filter(h=>!area||h.area===area).sort((a,b)=>b.completed.localeCompare(a.completed));html='<div class="actions"><button onclick="pmExport()">Export preventive CSV</button></div><div class="tablewrap"><table><thead><tr><th>Completed</th><th>Scheduled</th><th>Area</th><th>Asset</th><th>Task</th><th>Performed by</th><th>Hours</th><th>Notes</th><th>Action</th></tr></thead><tbody>'+arr.map(h=>'<tr><td>'+esc(h.completed)+'</td><td>'+esc(h.scheduled)+'</td><td>'+esc(h.area)+'</td><td>'+esc(h.asset)+'</td><td>'+esc(h.task)+'</td><td>'+esc(h.performedBy)+'</td><td>'+esc(h.hours)+'</td><td>'+esc(h.notes)+'</td><td><button class="small secondary" onclick="pmHistoryEdit(\''+esc(h.id)+'\')">Edit hours</button> <button class="small danger" onclick="pmHistoryDelete(\''+esc(h.id)+'\')">Delete</button></td></tr>').join('')+'</tbody></table></div>';if(!arr.length)html='<div class="empty">No completed preventive work yet.</div>'}else{const yr=new Date().getFullYear();const done=pmHistory.filter(h=>(!area||h.area===area)&&h.completed.startsWith(String(yr)));html='<h2>Annual preventive execution · '+yr+'</h2><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Month</th><th>Completed tasks</th><th>Labor hours</th></tr></thead><tbody>'+Array.from({length:12},(_,i)=>{const m=String(i+1).padStart(2,'0');const rows=done.filter(h=>h.completed.slice(5,7)===m);return '<tr><td>'+esc(new Date(yr,i,1).toLocaleString('en',{month:'long'}))+'</td><td>'+rows.length+'</td><td>'+rows.reduce((n,h)=>n+(Number(h.hours)||0),0).toFixed(2)+'</td></tr>'}).join('')+'</tbody></table></div>'}if(pmMode==='plans')html='<div class="actions" style="justify-content:flex-start"><button onclick="pmExport()">Export preventive CSV</button></div>'+html;$('pm-content').innerHTML=html}
+options('pm-area',locations,'Select area');options('pm-filter',locations,'All areas');
+
 renderDashboard();
 </script></body></html>
