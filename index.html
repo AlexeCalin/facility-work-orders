@@ -75,7 +75,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 .pm-calendar thead .pm-plan-label{z-index:3;background:#eef3f9}
 .pm-week-cell{display:block;width:26px;height:26px;padding:0;border-radius:5px;border:1px solid #d9e1eb;background:#f2f5f8;cursor:default}
 .pm-week-cell.clickable{cursor:pointer;border-color:#536477}
-.pm-week-cell.done{background:#18845b}.pm-week-cell.late{background:#e99435}.pm-week-cell.missed{background:#d94343}.pm-week-cell.partial{background:#8054c8}.pm-week-cell.partial-done{background:linear-gradient(90deg,#18845b 50%,#8054c8 50%)}
+.pm-week-cell.current{background:#f4d03f}.pm-week-cell.done{background:#18845b}.pm-week-cell.late{background:#e99435}.pm-week-cell.missed{background:#d94343}.pm-week-cell.partial{background:#8054c8}.pm-week-cell.partial-done{background:linear-gradient(90deg,#18845b 50%,#8054c8 50%)}
 .pm-legend{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
 .pm-legend span{display:inline-flex;align-items:center;gap:5px;font-size:12px}
 .pm-legend i{width:15px;height:15px;display:inline-block;border-radius:3px}
@@ -795,6 +795,33 @@ async function pmSave(e){
  if(!p.area||!p.asset||!p.task||!p.due||!p.assigned||!Number.isFinite(p.estimatedHours)||p.estimatedHours<0)return;
  try{await pmCloud('savePlan',{plan:p});await pmRefresh();pmCloseEditor();pmMode='plans';pmRender();toast('Plan saved in Supabase');}catch(e){alert('Nu s-a salvat: '+e.message)}
 }
+
+function pmChooseCompletion(){
+ return new Promise(resolve=>{
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:#10182899;display:flex;align-items:center;justify-content:center;z-index:20000;padding:16px';
+  overlay.innerHTML=`<div role="dialog" aria-modal="true" aria-labelledby="pm-choice-title" style="background:white;border-radius:12px;padding:24px;max-width:440px;width:100%;box-shadow:0 12px 40px #0004">
+   <h2 id="pm-choice-title" style="margin:0 0 12px;color:#17324d">Status mentenanță preventivă</h2>
+   <p>Alege cum dorești să salvezi intervenția:</p>
+   <p><b>Închis</b> – planul este finalizat complet.</p>
+   <p><b>Parțial</b> – planul rămâne deschis și poate fi completat ulterior.</p>
+   <div style="display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:20px">
+    <button type="button" class="secondary" data-choice="back">Înapoi</button>
+    <button type="button" style="background:#8054c8" data-choice="partial">Parțial</button>
+    <button type="button" style="background:#18845b" data-choice="closed">Închis</button>
+   </div></div>`;
+  const finish=v=>{document.removeEventListener('keydown',onKey);overlay.remove();resolve(v)};
+  const onKey=e=>{if(e.key==='Escape')finish(null)};
+  document.addEventListener('keydown',onKey);
+  overlay.addEventListener('click',e=>{
+   const b=e.target.closest('[data-choice]');if(b)finish(b.dataset.choice==='back'?null:b.dataset.choice);
+   else if(e.target===overlay)finish(null);
+  });
+  document.body.appendChild(overlay);
+  overlay.querySelector('[data-choice="closed"]').focus();
+ });
+}
+
 async function pmComplete(id){
  const p=pmPlans.find(x=>x.id===id);if(!p)return;
  const date=prompt('Work date (YYYY-MM-DD):',pmToday());if(date===null)return;
@@ -803,7 +830,9 @@ async function pmComplete(id){
  const notes=prompt('Work performed / notes:',p.partial?.notes||'');if(notes===null)return;
  const hours=prompt('Actual labor hours (total for this scheduled execution):',String(p.partial?.hours??p.estimatedHours??0));if(hours===null)return;
  if(!hours.trim()||!Number.isFinite(Number(hours))||Number(hours)<0){alert('Invalid labor hours');return;}
- const partial=confirm('Save as PARTIALLY COMPLETED?\\nOK = keep plan open (purple).\\nCancel = CLOSE COMPLETELY (green/purple if notes exist).');
+ const choice=await pmChooseCompletion();
+ if(choice===null)return;
+ const partial=choice==='partial';
  const previous=p.due;
  const execution={id:p.partial?.id||'EXEC-'+Date.now(),planId:p.id,area:p.area,asset:p.asset,task:p.task,scheduled:previous,completed:date,performedBy:person.trim(),notes,hours:Number(hours),estimatedHours:Number(p.estimatedHours)||0,partial:partial};
  if(!execution.performedBy){alert('Technician required');return;}
@@ -865,7 +894,7 @@ function pmCalendarOpen(planId,week){
 }
 function pmCalendarRender(list){
  const yr=pmCalendarYear,t=pmToday();
- const colors=[['#18845b','Completed on time'],['#e99435','Completed late'],['#d94343','Not completed / overdue'],['#8054c8','Partially completed'],['linear-gradient(90deg,#18845b 50%,#8054c8 50%)','Completed with work notes']];
+ const colors=[['#18845b','Completed on time'],['#e99435','Completed late'],['#d94343','Not completed / overdue'],['#f4d03f','Scheduled this week'],['#8054c8','Partially completed'],['linear-gradient(90deg,#18845b 50%,#8054c8 50%)','Completed with work notes']];
  const legend='<div class="pm-legend">'+colors.map(([color,label])=>'<span><i style="background:'+color+'"></i>'+label+'</span>').join('')+'</div>';
  const isoMonday=(year,week)=>{let d=new Date(year,0,4);d.setDate(d.getDate()-(d.getDay()||7)+1+(week-1)*7);return d;};
  const isoFriday=(year,week)=>{let d=isoMonday(year,week);d.setDate(d.getDate()+6);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
@@ -900,7 +929,7 @@ function pmCalendarRender(list){
     title=late?'Completed late':'Completed';
     if(noted)title+=' · Work performed notes';
    }else if(cell.partial){cls='partial';title='Partially completed';}
-   else if(cell.scheduled.length){const due=cell.scheduled[0];if(due<t){cls='missed';title='Overdue';}else{title='Scheduled';}}
+   else if(cell.scheduled.length){const due=cell.scheduled[0],currentWeek=pmIsoWeek(t);if(currentWeek?.year===yr&&currentWeek.week===week){cls='current';title='Scheduled this week';}else if(due<t){cls='missed';title='Overdue';}else{title='Scheduled';}}
    const clickable=!!(entries.length||cell.partial);
    return '<td><button type="button" class="pm-week-cell '+cls+(clickable?' clickable':'')+'" title="'+esc(title)+'" '+(clickable?'onclick="pmCalendarOpen('+JSON.stringify(p.id).replace(/"/g,'&quot;')+','+week+')"':'disabled')+'></button></td>';
   }).join('')+'</tr>';
