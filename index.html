@@ -66,6 +66,19 @@ body.first-order #page-new #facilityAdminFields{display:none!important}
 body.first-order #page-new .requester-note{margin-bottom:0}
 
 
+/* Calendar preventiv */
+.pm-calendar-wrap{max-height:72vh;overflow:auto;border:1px solid #dce3ec;border-radius:9px}
+.pm-calendar{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:11px}
+.pm-calendar th,.pm-calendar td{padding:5px;border-right:1px solid #e3e9f0;border-bottom:1px solid #e3e9f0;text-align:center;min-width:32px}
+.pm-calendar thead th{position:sticky;top:0;z-index:2;background:#eef3f9}
+.pm-calendar .pm-plan-label{position:sticky;left:0;z-index:1;min-width:250px;max-width:250px;text-align:left;background:white;white-space:normal}
+.pm-calendar thead .pm-plan-label{z-index:3;background:#eef3f9}
+.pm-week-cell{display:block;width:26px;height:26px;padding:0;border-radius:5px;border:1px solid #d9e1eb;background:#f2f5f8;cursor:default}
+.pm-week-cell.clickable{cursor:pointer;border-color:#536477}
+.pm-week-cell.done{background:#18845b}.pm-week-cell.late{background:#e99435}.pm-week-cell.missed{background:#d94343}.pm-week-cell.partial{background:#8054c8}.pm-week-cell.partial-done{background:linear-gradient(90deg,#18845b 50%,#8054c8 50%)}
+.pm-legend{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
+.pm-legend span{display:inline-flex;align-items:center;gap:5px;font-size:12px}
+.pm-legend i{width:15px;height:15px;display:inline-block;border-radius:3px}
 /* Buton de revenire la portal, vizibil inclusiv in formularul initial. */
 .portal-back{position:fixed;left:16px;bottom:16px;z-index:10001;display:inline-flex;align-items:center;gap:7px;padding:11px 15px;background:#17324d;color:#fff;text-decoration:none;border:1px solid #dce3ec;border-radius:9px;box-shadow:0 4px 16px #0003;font-weight:700;font-size:13px}
 .portal-back:hover,.portal-back:focus{background:#2463a6;color:#fff}
@@ -116,7 +129,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 </section>
 <section id="page-pm" class="hidden">
 <div class="panel"><h2>Preventive Maintenance · Facilities</h2><p class="subnote">Planuri independente de mentenanța echipamentelor de producție. Datele sunt salvate local în acest browser.</p>
-<div class="nav"><button onclick="pmTab('due')" id="pm-tab-due">New · This week</button><button onclick="pmTab('overdue')" id="pm-tab-overdue">Overdue</button><button onclick="pmTab('plans')" id="pm-tab-plans">Defined plans</button><button onclick="pmTab('history')" id="pm-tab-history">History</button><button onclick="pmTab('stats')" id="pm-tab-stats">Statistics</button></div>
+<div class="nav"><button onclick="pmTab('due')" id="pm-tab-due">New · This week</button><button onclick="pmTab('overdue')" id="pm-tab-overdue">Overdue</button><button onclick="pmTab('plans')" id="pm-tab-plans">Defined plans</button><button onclick="pmTab('history')" id="pm-tab-history">History</button><button onclick="pmTab('stats')" id="pm-tab-stats">Statistics</button><button onclick="pmTab('calendar')" id="pm-tab-calendar">WK1–WK52 Calendar</button></div>
 <div id="pm-summary" class="cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
 <div id="pm-plan-editor" class="panel hidden" style="background:#f8fafc"><h2 id="pm-editor-title">Define preventive plan</h2><form id="pmForm" onsubmit="pmSave(event)"><input type="hidden" id="pm-id"><div class="formgrid">
 <div class="field"><label>Building / Area *</label><select id="pm-area" required></select></div>
@@ -753,6 +766,7 @@ $('technicianMonth').value=new Date().toISOString().slice(0,7);loadTechnicianMon
 // Independent Facility Preventive Maintenance module
 const PM_KEY='facility_preventive_plans_v1', PM_HISTORY_KEY='facility_preventive_history_v1';
 let pmPlans=[],pmHistory=[],pmMode='due';
+let pmCalendarYear=new Date().getFullYear();
 let pmLoaded=false;
 const pmFreq={daily:'Daily',weekly:'Weekly',biweekly:'Every 2 weeks',monthly:'Monthly',quarterly:'Quarterly',semiannual:'Every 6 months',annual:'Annually'};
 function pmLoad(k){try{const v=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(v)?v:[]}catch(e){return []}}
@@ -777,21 +791,31 @@ function pmTechnicianOptions(selected=''){const names=technicians.map(techName).
 function pmNew(id){let p=pmPlans.find(x=>x.id===id);$('pmForm').reset();$('pm-id').value=p?.id||'';$('pm-editor-title').textContent=p?'Edit preventive plan':'Define preventive plan';$('pm-area').value=p?.area||'';$('pm-asset').value=p?.asset||'';$('pm-task').value=p?.task||'';$('pm-frequency').value=p?.freq||'monthly';$('pm-due').value=p?.due||pmToday();pmTechnicianOptions(p?.assigned||'');$('pm-estimated-hours').value=p?.estimatedHours??'';$('pm-instructions').value=p?.instructions||'';$('pm-plan-editor').classList.remove('hidden');$('pm-plan-editor').scrollIntoView({behavior:'smooth',block:'start'})}
 async function pmSave(e){
  e.preventDefault();const id=$('pm-id').value;
- const p={id:id||'FPM-'+Date.now(),area:$('pm-area').value,asset:$('pm-asset').value.trim(),task:$('pm-task').value.trim(),freq:$('pm-frequency').value,due:$('pm-due').value,assigned:$('pm-assigned').value.trim(),estimatedHours:Number($('pm-estimated-hours').value),instructions:$('pm-instructions').value.trim()};
+ const p={id:id||'FPM-'+Date.now(),area:$('pm-area').value,asset:$('pm-asset').value.trim(),task:$('pm-task').value.trim(),freq:$('pm-frequency').value,due:$('pm-due').value,assigned:$('pm-assigned').value.trim(),estimatedHours:Number($('pm-estimated-hours').value),instructions:$('pm-instructions').value.trim(),startDate:pmPlans.find(x=>x.id===id)?.startDate||$('pm-due').value,partial:pmPlans.find(x=>x.id===id)?.partial||null};
  if(!p.area||!p.asset||!p.task||!p.due||!p.assigned||!Number.isFinite(p.estimatedHours)||p.estimatedHours<0)return;
  try{await pmCloud('savePlan',{plan:p});await pmRefresh();pmCloseEditor();pmMode='plans';pmRender();toast('Plan saved in Supabase');}catch(e){alert('Nu s-a salvat: '+e.message)}
 }
 async function pmComplete(id){
  const p=pmPlans.find(x=>x.id===id);if(!p)return;
- const date=prompt('Completion date (YYYY-MM-DD):',pmToday());if(date===null)return;
- if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(new Date(date+'T12:00:00').getTime())){alert('Invalid date');return}
- const person=prompt('Performed by:',p.assigned||'');if(person===null)return;
- const notes=prompt('Work performed / notes:','');if(notes===null)return;
- const hours=prompt('Actual labor hours:',String(p.estimatedHours??''));if(hours===null)return;
- if(!hours.trim()||!Number.isFinite(Number(hours))||Number(hours)<0){alert('Invalid labor hours');return}
- const previous=p.due;let next=pmShift(previous,p.freq),guard=0;
- while(next<=date&&guard++<10000){const n=pmShift(next,p.freq);if(n<=next)break;next=n}
- try{await pmCloud('complete',{planId:id,expectedDue:previous,execution:{id:'EXEC-'+Date.now(),planId:p.id,area:p.area,asset:p.asset,task:p.task,scheduled:previous,completed:date,performedBy:person,notes,hours:Number(hours),estimatedHours:Number(p.estimatedHours)||0},nextDue:next});await pmRefresh();renderTechnicians();toast('Execution saved in Supabase; next due: '+next)}catch(e){alert('Nu s-a salvat execuția: '+e.message)}
+ const date=prompt('Work date (YYYY-MM-DD):',pmToday());if(date===null)return;
+ if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||isNaN(Date.parse(date+'T12:00:00'))){alert('Invalid date');return;}
+ const person=prompt('Performed by:',p.partial?.performedBy||p.assigned||'');if(person===null)return;
+ const notes=prompt('Work performed / notes:',p.partial?.notes||'');if(notes===null)return;
+ const hours=prompt('Actual labor hours (total for this scheduled execution):',String(p.partial?.hours??p.estimatedHours??0));if(hours===null)return;
+ if(!hours.trim()||!Number.isFinite(Number(hours))||Number(hours)<0){alert('Invalid labor hours');return;}
+ const partial=confirm('Save as PARTIALLY COMPLETED?\\nOK = keep plan open (purple).\\nCancel = CLOSE COMPLETELY (green/purple if notes exist).');
+ const previous=p.due;
+ const execution={id:p.partial?.id||'EXEC-'+Date.now(),planId:p.id,area:p.area,asset:p.asset,task:p.task,scheduled:previous,completed:date,performedBy:person.trim(),notes,hours:Number(hours),estimatedHours:Number(p.estimatedHours)||0,partial:partial};
+ if(!execution.performedBy){alert('Technician required');return;}
+ if(partial){
+   try{await pmCloud('savePartial',{planId:id,expectedDue:previous,execution});await pmRefresh();toast('Partially completed — plan remains open.');}
+   catch(e){alert('Partial save failed: '+e.message);}
+   return;
+ }
+ let next=pmShift(previous,p.freq),guard=0;
+ while(next<=date&&guard++<10000){const n=pmShift(next,p.freq);if(n<=next)break;next=n;}
+ try{await pmCloud('complete',{planId:id,expectedDue:previous,execution:{...execution,partial:false},nextDue:next});await pmRefresh();toast('Completed; next due: '+next);}
+ catch(e){alert('Completion failed: '+e.message);}
 }
 async function pmDelete(id){
  if(!confirm('Ștergi planul și TOATE execuțiile asociate? Orele vor fi eliminate din workload.'))return;
@@ -823,7 +847,68 @@ function pmPrintPlan(id){
  win.document.open();win.document.write(content);win.document.close();win.focus();
 }
 function pmExport(){const headers=['record','id','area','asset','task','frequency','due','scheduled','completed','performedBy','assigned','estimatedHours','hours','notes','instructions'];const rows=[...pmPlans.map(p=>({record:'plan',...p})),...pmHistory.map(h=>({record:'execution',...h}))];const csv=[headers.join(','),...rows.map(r=>headers.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');const a=document.createElement('a'),url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.href=url;a.download='facility_preventive_'+pmToday()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-function pmRender(){if(!$('page-pm'))return;const t=pmToday(),end=pmWeekEnd();const filter=$('pm-filter');const previous=filter.value;filter.innerHTML='<option value="">All areas</option>'+locations.map(l=>'<option value="'+esc(l)+'">'+esc(l)+'</option>').join('');filter.value=locations.includes(previous)?previous:'';const area=filter.value;const list=pmPlans.filter(p=>!area||p.area===area);const late=list.filter(p=>p.due<t),week=list.filter(p=>p.due>=t&&p.due<=end);$('pm-summary').innerHTML=metric('Defined plans',list.length,'Facilities only')+metric('Due this week',week.length,'Today through Sunday')+metric('Overdue',late.length,'Before today')+metric('Executions',pmHistory.filter(h=>!area||h.area===area).length,'Saved history');['due','overdue','plans','history','stats'].forEach(k=>$('pm-tab-'+k).classList.toggle('active',k===pmMode));let html='';if(['due','overdue','plans'].includes(pmMode)){const arr=(pmMode==='due'?week:pmMode==='overdue'?late:list).slice().sort((a,b)=>a.due.localeCompare(b.due));html='<div class="tablewrap"><table><thead><tr><th>Area</th><th>Asset</th><th>Task</th><th>Frequency</th><th>Assigned</th><th>Estimated hours</th><th>Next due</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+arr.map(p=>'<tr><td>'+esc(p.area)+'</td><td>'+esc(p.asset)+'</td><td><b>'+esc(p.task)+'</b><div class="subnote">'+esc(p.instructions)+'</div></td><td>'+esc(pmFreq[p.freq]||p.freq)+'</td><td>'+esc(p.assigned||'—')+'</td><td>'+esc(p.estimatedHours??'—')+'</td><td style="font-weight:700;color:'+(p.due<t?'#b42318':p.due===t?'#b9770e':'inherit')+'">'+esc(p.due)+'</td><td>'+esc(p.due<t?'Overdue':p.due===t?'Due today':'Planned')+'</td><td><button class="small" onclick="pmComplete(\''+esc(p.id)+'\')">Complete</button> <button class="small secondary" onclick="pmNew(\''+esc(p.id)+'\')">Edit</button> <button class="small secondary" onclick="pmPrintPlan(\''+esc(p.id)+'\')">Print</button> <button class="small danger" onclick="pmDelete(\''+esc(p.id)+'\')">Delete</button></td></tr>').join('')+'</tbody></table></div>';if(!arr.length)html='<div class="empty">No preventive plans in this view.</div>'}else if(pmMode==='history'){const arr=pmHistory.filter(h=>!area||h.area===area).sort((a,b)=>b.completed.localeCompare(a.completed));html='<div class="actions"><button onclick="pmExport()">Export preventive CSV</button></div><div class="tablewrap"><table><thead><tr><th>Completed</th><th>Scheduled</th><th>Area</th><th>Asset</th><th>Task</th><th>Performed by</th><th>Hours</th><th>Notes</th><th>Action</th></tr></thead><tbody>'+arr.map(h=>'<tr><td>'+esc(h.completed)+'</td><td>'+esc(h.scheduled)+'</td><td>'+esc(h.area)+'</td><td>'+esc(h.asset)+'</td><td>'+esc(h.task)+'</td><td>'+esc(h.performedBy)+'</td><td>'+esc(h.hours)+'</td><td>'+esc(h.notes)+'</td><td><button class="small secondary" onclick="pmHistoryEdit(\''+esc(h.id)+'\')">Edit hours</button> <button class="small danger" onclick="pmHistoryDelete(\''+esc(h.id)+'\')">Delete</button></td></tr>').join('')+'</tbody></table></div>';if(!arr.length)html='<div class="empty">No completed preventive work yet.</div>'}else{const yr=new Date().getFullYear();const done=pmHistory.filter(h=>(!area||h.area===area)&&h.completed.startsWith(String(yr)));html='<h2>Annual preventive execution · '+yr+'</h2><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Month</th><th>Completed tasks</th><th>Labor hours</th></tr></thead><tbody>'+Array.from({length:12},(_,i)=>{const m=String(i+1).padStart(2,'0');const rows=done.filter(h=>h.completed.slice(5,7)===m);return '<tr><td>'+esc(new Date(yr,i,1).toLocaleString('en',{month:'long'}))+'</td><td>'+rows.length+'</td><td>'+rows.reduce((n,h)=>n+(Number(h.hours)||0),0).toFixed(2)+'</td></tr>'}).join('')+'</tbody></table></div>'}if(pmMode==='plans')html='<div class="actions" style="justify-content:flex-start"><button onclick="pmExport()">Export preventive CSV</button></div>'+html;$('pm-content').innerHTML=html}
+
+function pmIsoWeek(dateStr){
+ const d=new Date(dateStr+'T12:00:00');if(isNaN(d))return null;
+ d.setHours(0,0,0,0);d.setDate(d.getDate()+4-(d.getDay()||7));
+ const y=d.getFullYear(),first=new Date(y,0,1);
+ return {year:y,week:Math.ceil((((d-first)/86400000)+1)/7)};
+}
+function pmCalendarOpen(planId,week){
+ const p=pmPlans.find(x=>x.id===planId);
+ const entries=pmHistory.filter(h=>h.planId===planId&&pmIsoWeek(h.scheduled)?.year===pmCalendarYear&&pmIsoWeek(h.scheduled)?.week===week);
+ const partial=p?.partial&&pmIsoWeek(p.due)?.year===pmCalendarYear&&pmIsoWeek(p.due)?.week===week?p.partial:null;
+ const note=[...entries.map(x=>x.notes||''),partial?.notes||''].filter(Boolean).join('\n\n');
+ if(note)alert('WK'+week+' · Work performed:\n\n'+note);
+ pmMode='plans';pmRender();
+ if(p){pmNew(p.id);}
+}
+function pmCalendarRender(list){
+ const yr=pmCalendarYear,t=pmToday();
+ const colors=[['#18845b','Completed on time'],['#e99435','Completed late'],['#d94343','Not completed / overdue'],['#8054c8','Partially completed'],['linear-gradient(90deg,#18845b 50%,#8054c8 50%)','Completed with work notes']];
+ const legend='<div class="pm-legend">'+colors.map(([color,label])=>'<span><i style="background:'+color+'"></i>'+label+'</span>').join('')+'</div>';
+ const isoMonday=(year,week)=>{let d=new Date(year,0,4);d.setDate(d.getDate()-(d.getDay()||7)+1+(week-1)*7);return d;};
+ const isoFriday=(year,week)=>{let d=isoMonday(year,week);d.setDate(d.getDate()+6);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
+ const rows=list.map(p=>{
+  const map=new Map();
+  const set=(date,record,partial=false)=>{
+   const w=pmIsoWeek(date);if(w?.year!==yr||w.week>52)return;
+   const old=map.get(w.week)||{scheduled:[],entries:[],partial:null};
+   if(record)old.entries.push(record);else if(partial)old.partial=p.partial;else old.scheduled.push(date);
+   map.set(w.week,old);
+  };
+  const all=pmHistory.filter(h=>h.planId===p.id);
+  all.forEach(h=>set(h.scheduled,h));
+  if(p.partial)set(p.due,null,true);
+  // Reconstruct due dates from the first defined due date, including completed cycles.
+  let cursor=p.startDate||[...all.map(h=>h.scheduled),p.due].filter(Boolean).sort()[0]||p.due;
+  let count=0;
+  while(cursor&&cursor.slice(0,4)<=String(yr)&&count++<4000){
+   if(cursor.slice(0,4)===String(yr))set(cursor,null);
+   const next=pmShift(cursor,p.freq);if(next<=cursor)break;cursor=next;
+  }
+  return '<tr><th class="pm-plan-label"><b>'+esc(p.asset)+'</b><div>'+esc(p.task)+'</div><small>'+esc(p.area)+'</small></th>'+
+  Array.from({length:52},(_,i)=>{
+   const week=i+1,cell=map.get(week);
+   if(!cell)return '<td><span class="pm-week-cell"></span></td>';
+   const entries=cell.entries;
+   let cls='',title='';
+   if(entries.length){
+    const late=entries.some(h=>h.completed>h.scheduled);
+    const noted=entries.some(h=>String(h.notes||'').trim());
+    cls=noted&&!late?'partial-done':late?'late':'done';
+    title=late?'Completed late':'Completed';
+    if(noted)title+=' · Work performed notes';
+   }else if(cell.partial){cls='partial';title='Partially completed';}
+   else if(cell.scheduled.length){const due=cell.scheduled[0];if(due<t){cls='missed';title='Overdue';}else{title='Scheduled';}}
+   const clickable=!!(entries.length||cell.partial);
+   return '<td><button type="button" class="pm-week-cell '+cls+(clickable?' clickable':'')+'" title="'+esc(title)+'" '+(clickable?'onclick="pmCalendarOpen('+JSON.stringify(p.id).replace(/"/g,'&quot;')+','+week+')"':'disabled')+'></button></td>';
+  }).join('')+'</tr>';
+ }).join('');
+ return '<div class="actions" style="justify-content:flex-start;align-items:center"><label for="pm-calendar-year">Year</label><select id="pm-calendar-year" style="width:110px" onchange="pmCalendarYear=Number(this.value);pmRender()">'+Array.from({length:7},(_,i)=>new Date().getFullYear()-3+i).map(y=>'<option value="'+y+'" '+(y===yr?'selected':'')+'>'+y+'</option>').join('')+'</select></div>'+legend+
+ '<div class="pm-calendar-wrap"><table class="pm-calendar"><thead><tr><th class="pm-plan-label">Preventive plan</th>'+Array.from({length:52},(_,i)=>'<th>WK'+(i+1)+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div><p class="subnote">Click a colored execution cell to see work performed and open its plan. Blank cells mean no scheduled work. Weeks follow ISO calendar (Monday–Sunday).</p>';
+}
+function pmRender(){if(!$('page-pm'))return;const t=pmToday(),end=pmWeekEnd();const filter=$('pm-filter');const previous=filter.value;filter.innerHTML='<option value="">All areas</option>'+locations.map(l=>'<option value="'+esc(l)+'">'+esc(l)+'</option>').join('');filter.value=locations.includes(previous)?previous:'';const area=filter.value;const list=pmPlans.filter(p=>!area||p.area===area);const late=list.filter(p=>p.due<t),week=list.filter(p=>p.due>=t&&p.due<=end);$('pm-summary').innerHTML=metric('Defined plans',list.length,'Facilities only')+metric('Due this week',week.length,'Today through Sunday')+metric('Overdue',late.length,'Before today')+metric('Executions',pmHistory.filter(h=>!area||h.area===area).length,'Saved history');['due','overdue','plans','history','stats','calendar'].forEach(k=>$('pm-tab-'+k).classList.toggle('active',k===pmMode));let html='';if(['due','overdue','plans'].includes(pmMode)){const arr=(pmMode==='due'?week:pmMode==='overdue'?late:list).slice().sort((a,b)=>a.due.localeCompare(b.due));html='<div class="tablewrap"><table><thead><tr><th>Area</th><th>Asset</th><th>Task</th><th>Frequency</th><th>Assigned</th><th>Estimated hours</th><th>Next due</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+arr.map(p=>'<tr><td>'+esc(p.area)+'</td><td>'+esc(p.asset)+'</td><td><b>'+esc(p.task)+'</b><div class="subnote">'+esc(p.instructions)+'</div></td><td>'+esc(pmFreq[p.freq]||p.freq)+'</td><td>'+esc(p.assigned||'—')+'</td><td>'+esc(p.estimatedHours??'—')+'</td><td style="font-weight:700;color:'+(p.due<t?'#b42318':p.due===t?'#b9770e':'inherit')+'">'+esc(p.due)+'</td><td>'+esc(p.partial?'Partially Completed':p.due<t?'Overdue':p.due===t?'Due today':'Planned')+'</td><td><button class="small" onclick="pmComplete(\''+esc(p.id)+'\')">Complete / Partial</button> <button class="small secondary" onclick="pmNew(\''+esc(p.id)+'\')">Edit</button> <button class="small secondary" onclick="pmPrintPlan(\''+esc(p.id)+'\')">Print</button> <button class="small danger" onclick="pmDelete(\''+esc(p.id)+'\')">Delete</button></td></tr>').join('')+'</tbody></table></div>';if(!arr.length)html='<div class="empty">No preventive plans in this view.</div>'}else if(pmMode==='calendar'){html=pmCalendarRender(list)}else if(pmMode==='history'){const arr=pmHistory.filter(h=>!area||h.area===area).sort((a,b)=>b.completed.localeCompare(a.completed));html='<div class="actions"><button onclick="pmExport()">Export preventive CSV</button></div><div class="tablewrap"><table><thead><tr><th>Completed</th><th>Scheduled</th><th>Area</th><th>Asset</th><th>Task</th><th>Performed by</th><th>Hours</th><th>Notes</th><th>Action</th></tr></thead><tbody>'+arr.map(h=>'<tr><td>'+esc(h.completed)+'</td><td>'+esc(h.scheduled)+'</td><td>'+esc(h.area)+'</td><td>'+esc(h.asset)+'</td><td>'+esc(h.task)+'</td><td>'+esc(h.performedBy)+'</td><td>'+esc(h.hours)+'</td><td>'+esc(h.notes)+'</td><td><button class="small secondary" onclick="pmHistoryEdit(\''+esc(h.id)+'\')">Edit hours</button> <button class="small danger" onclick="pmHistoryDelete(\''+esc(h.id)+'\')">Delete</button></td></tr>').join('')+'</tbody></table></div>';if(!arr.length)html='<div class="empty">No completed preventive work yet.</div>'}else{const yr=new Date().getFullYear();const done=pmHistory.filter(h=>(!area||h.area===area)&&h.completed.startsWith(String(yr)));html='<h2>Annual preventive execution · '+yr+'</h2><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Month</th><th>Completed tasks</th><th>Labor hours</th></tr></thead><tbody>'+Array.from({length:12},(_,i)=>{const m=String(i+1).padStart(2,'0');const rows=done.filter(h=>h.completed.slice(5,7)===m);return '<tr><td>'+esc(new Date(yr,i,1).toLocaleString('en',{month:'long'}))+'</td><td>'+rows.length+'</td><td>'+rows.reduce((n,h)=>n+(Number(h.hours)||0),0).toFixed(2)+'</td></tr>'}).join('')+'</tbody></table></div>'}if(pmMode==='plans')html='<div class="actions" style="justify-content:flex-start"><button onclick="pmExport()">Export preventive CSV</button></div>'+html;$('pm-content').innerHTML=html}
 options('pm-area',locations,'Select area');options('pm-filter',locations,'All areas');
 
 renderDashboard();
