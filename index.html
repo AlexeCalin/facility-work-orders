@@ -943,7 +943,7 @@ function pmCalendarOpen(planId,week){
 }
 function pmCalendarRender(list){
  const yr=pmCalendarYear,t=pmToday();
- const colors=[['#18845b','Completed on time'],['#e99435','Completed late'],['#d94343','Not completed / overdue'],['#f4d03f','Scheduled this week'],['#8054c8','Partially completed'],['linear-gradient(90deg,#18845b 50%,#8054c8 50%)','Completed with work notes']];
+ const colors=[['#18845b','Completed on time'],['#e99435','Completed late'],['#d94343','Not completed / overdue'],['#f4d03f','Scheduled this week'],['#8054c8','Partially completed'],['linear-gradient(90deg,#18845b 50%,#8054c8 50%)','Partially completed, then fully closed']];
  const legend='<div class="pm-legend">'+colors.map(([color,label])=>'<span><i style="background:'+color+'"></i>'+label+'</span>').join('')+'</div>';
  const isoMonday=(year,week)=>{let d=new Date(year,0,4);d.setDate(d.getDate()-(d.getDay()||7)+1+(week-1)*7);return d;};
  const isoFriday=(year,week)=>{let d=isoMonday(year,week);d.setDate(d.getDate()+6);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
@@ -975,8 +975,9 @@ function pmCalendarRender(list){
    if(entries.length){
     const late=entries.some(h=>h.completed>h.scheduled);
     const noted=entries.some(h=>String(h.notes||'').trim());
-    cls=noted&&!late?'partial-done':late?'late':'done';
+    cls=entries.some(h=>h.wasPartial===true)?'partial-done':late?'late':'done';
     title=late?'Completed late':'Completed';
+    if(entries.some(h=>h.wasPartial===true))title+=' · Previously partially completed';
     if(noted)title+=' · Work performed notes';
    }else if(cell.partial){cls='partial';title='Partially completed';}
    else if(cell.scheduled.length){const due=cell.scheduled[0],currentWeek=pmIsoWeek(t);if(currentWeek?.year===yr&&currentWeek.week===week){cls='current';title='Scheduled this week';}else if(due<t){cls='missed';title='Overdue';}else{title='Scheduled';}}
