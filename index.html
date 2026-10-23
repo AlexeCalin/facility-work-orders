@@ -904,7 +904,9 @@ function pmIsoWeek(dateStr){
  return {year:y,week:Math.ceil((((d-first)/86400000)+1)/7)};
 }
 async function pmClosePartial(planId,executionId){
- const p=pmPlans.find(x=>x.id===planId),old=(p?.partialExecutions||[]).find(x=>x.id===executionId);if(!old)return;
+ const p=pmPlans.find(x=>x.id===planId),old=[...(p?.partialExecutions||[]),...(p?.partial?[p.partial]:[])].find(x=>x.id===executionId);
+ if(!p||!old){alert('Lucrarea parțială nu a fost găsită. Reîncarcă pagina.');return;}
+ if(!confirm('Deschide lucrarea parțială:\n'+p.asset+' — '+p.task+'\nScadență: '+old.scheduled+'\nExecutat: '+(old.notes||'—')+'\n\nOK = continuă la închiderea definitivă\nCancel = revino fără modificări'))return;
  const completed=prompt('Final completion date (YYYY-MM-DD):',pmToday());if(completed===null)return;
  if(!/^\d{4}-\d{2}-\d{2}$/.test(completed)||isNaN(Date.parse(completed+'T12:00:00'))){alert('Invalid date');return;}
  const notes=prompt('Work performed (update if needed):',old.notes||'');if(notes===null)return;
