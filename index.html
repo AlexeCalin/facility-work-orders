@@ -395,7 +395,7 @@ function editOrder(id){let o=orders.find(x=>x.id===id);if(!o)return;newOrder();$
 const m={requester:'requester',department:'department',dateSubmitted:'requestDate',location:'location',type:'type',impact:'impact',requestedPriority:'requestedPriority',priority:'priority',status:'status',description:'description',targetDate:'targetDate',actualCost:'actualCost',estimatedHours:'estimatedHours',actualHours:'actualHours',dateCompleted:'dateCompleted',notes:'notes'};
 Object.entries(m).forEach(([k,v])=>$(v).value=o[k]??'');retainedAttachments=[...(o.attachments||[])];renderExistingAttachments();loadAssignments(o);showPage('new')}
 function isClosed(o){return ['Completed','Closed','Rejected'].includes(o.status)}
-function isOverdue(o){return o.targetDate&&o.targetDate<today()&&!isClosed(o)}
+function isOverdue(o){if(!o.targetDate)return false;if(o.dateCompleted)return o.dateCompleted>o.targetDate;if(isClosed(o))return false;return o.targetDate<today()}
 function priorityClass(p){return 'p'+(priorities.indexOf(p)+1||4)}
 function statusClass(s){return 'st-'+String(s||'').replaceAll(' ','-')}
 function pill(s,cls){return `<span class="pill ${cls||''}">${esc(s||'—')}</span>`}
@@ -455,8 +455,8 @@ function renderMonthlyCosts() {
    // Closed = cereri finalizate în luna respectivă.
    if(/^\d{4}-\d{2}-\d{2}$/.test(o.dateCompleted||'')&&Number(o.dateCompleted.slice(0,4))===year)
      totals[Number(o.dateCompleted.slice(5,7))-1].closed++;
-   // Overdue = termenul a expirat în acea lună și finalizarea a fost după termen sau lipsește.
-   if(/^\d{4}-\d{2}-\d{2}$/.test(o.targetDate||'')&&Number(o.targetDate.slice(0,4))===year && (!o.dateCompleted||o.dateCompleted>o.targetDate))
+   // Overdue = WO deschise cu termen depășit sau WO închise după Target date.
+   if(isOverdue(o)&&/^\d{4}-\d{2}-\d{2}$/.test(o.targetDate||'')&&Number(o.targetDate.slice(0,4))===year)
      totals[Number(o.targetDate.slice(5,7))-1].overdue++;
  });
  const months=['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
@@ -464,7 +464,7 @@ function renderMonthlyCosts() {
  $('monthlyCosts').innerHTML=`<div class="tablewrap"><table style="min-width:720px"><thead><tr><th>Luna</th><th>Cheltuieli (RON)</th><th>Nr. WO închise</th><th>Nr. WO deschise</th><th>Nr. WO Overdue</th></tr></thead><tbody>
  ${months.map((m,i)=>`<tr><td>${m}</td><td>${money(totals[i].cost)}</td><td>${totals[i].closed}</td><td>${totals[i].opened}</td><td>${totals[i].overdue}</td></tr>`).join('')}
  <tr><th>Total ${year}</th><th>${money(sum.cost)}</th><th>${sum.closed}</th><th>${sum.opened}</th><th>${sum.overdue}</th></tr></tbody></table></div>
- <p class="subnote">Deschise = WO create în luna respectivă; închise = WO finalizate în acea lună; Overdue = WO cu termen în acea lună, finalizate cu întârziere sau încă nefinalizate. Un WO poate apărea în mai multe categorii.</p>`;
+ <p class="subnote">Deschise = WO create în luna respectivă; închise = WO finalizate în acea lună; Overdue = WO încă deschise cu termen depășit și WO închise după Target date; sunt grupate după luna termenului. Un WO poate apărea în mai multe categorii.</p>`;
 }
 function renderDashboard(){
   let open=orders.filter(o=>!isClosed(o)),
