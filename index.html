@@ -71,6 +71,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 .portal-back:hover,.portal-back:focus{background:#2463a6;color:#fff}
 @media print{.portal-back{display:none!important}}
 .chart-bars{display:flex;flex-direction:column;gap:11px}.chart-bar-row{display:grid;grid-template-columns:minmax(105px,32%) minmax(70px,1fr) minmax(70px,auto);gap:9px;align-items:center;font-size:12px}.chart-bar-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chart-bar-track{height:16px;background:#edf1f5;border-radius:4px;overflow:hidden}.chart-bar-track span{display:block;height:100%;background:#2463a6;border-radius:4px}.chart-bar-row strong{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}@media(max-width:520px){.chart-bar-row{grid-template-columns:85px minmax(40px,1fr) auto;gap:5px;font-size:10px}}
+.chart-period-controls{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 12px}.chart-period-controls label{font-size:12px;font-weight:650;color:#435267;display:flex;gap:7px;align-items:center}.chart-period-controls select{width:auto;min-width:86px;padding:6px 8px}
 </style></head>
 <body>
 <a class="portal-back" href="https://alexecalin.github.io/" aria-label="Înapoi la meniul principal">&#8592; Meniu principal</a>
@@ -137,11 +138,11 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 <div class="field"><label>Anul</label><select id="chartYear" onchange="renderCharts()"></select></div>
 <div class="field"><label>Stare Work Orders</label><select id="chartStatus" onchange="renderCharts()"><option value="">Toate statusurile</option><option value="open">Deschise</option><option value="closed">Închise</option><option value="overdue">Overdue (inclusiv închise cu întârziere)</option></select></div>
 <div class="field"><label>Hala / locația</label><select id="chartLocation" onchange="renderCharts()"><option value="">Toate locațiile</option></select></div>
-</div><p class="subnote">Filtrele se aplică tuturor graficelor. Luna este stabilită după Request date (data cererii); cheltuielile sunt costurile efective înregistrate în Work Orders. Overdue include și WO închise după Target date.</p></div>
+</div><p class="subnote">Filtrele de status și locație se aplică tuturor graficelor WO; fiecare grafic are propriul an și propria lună. Perioada este stabilită după Request date (data cererii); cheltuielile sunt costurile efective înregistrate în Work Orders. Overdue include și WO închise după Target date.</p></div>
 <div class="cards" id="chartMetrics"></div>
-<div class="two"><div class="panel"><h2>Work Orders pe hale / locații</h2><div id="chartByLocation"></div></div><div class="panel"><h2>Work Orders pe luni</h2><div id="chartByMonth"></div></div></div>
-<div class="two"><div class="panel"><h2>Work Orders pe requester</h2><div id="chartByRequester"></div></div><div class="panel"><h2>Cheltuieli pe hale / locații (RON)</h2><div id="chartCostsByLocation"></div></div></div>
-<div class="two"><div class="panel"><h2>Cheltuieli pe luni (RON)</h2><div id="chartCostsByMonth"></div></div><div class="panel"><h2>Cheltuieli pe requester (RON)</h2><div id="chartCostsByRequester"></div></div></div>
+<div class="two"><div class="panel"><h2>Work Orders pe hale / locații</h2><div class="chart-period-controls no-print"><label>An <select id="chartByLocationYear" onchange="renderCharts()"></select></label><label>Lună <select id="chartByLocationMonth" onchange="renderCharts()"><option value="">Toate lunile</option><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label></div><div id="chartByLocation"></div></div><div class="panel"><h2>Work Orders pe luni</h2><div class="chart-period-controls no-print"><label>An <select id="chartByMonthYear" onchange="renderCharts()"></select></label><label>Lună <select id="chartByMonthMonth" onchange="renderCharts()"><option value="">Toate lunile</option><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label></div><div id="chartByMonth"></div></div></div>
+<div class="two"><div class="panel"><h2>Work Orders pe requester</h2><div class="chart-period-controls no-print"><label>An <select id="chartByRequesterYear" onchange="renderCharts()"></select></label><label>Lună <select id="chartByRequesterMonth" onchange="renderCharts()"><option value="">Toate lunile</option><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label></div><div id="chartByRequester"></div></div><div class="panel"><h2>Cheltuieli pe hale / locații (RON)</h2><div class="chart-period-controls no-print"><label>An <select id="chartCostsByLocationYear" onchange="renderCharts()"></select></label><label>Lună <select id="chartCostsByLocationMonth" onchange="renderCharts()"><option value="">Toate lunile</option><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label></div><div id="chartCostsByLocation"></div></div></div>
+<div class="two"><div class="panel"><h2>Cheltuieli pe luni (RON)</h2><div class="chart-period-controls no-print"><label>An <select id="chartCostsByMonthYear" onchange="renderCharts()"></select></label><label>Lună <select id="chartCostsByMonthMonth" onchange="renderCharts()"><option value="">Toate lunile</option><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label></div><div id="chartCostsByMonth"></div></div><div class="panel"><h2>Cheltuieli pe requester (RON)</h2><div class="chart-period-controls no-print"><label>An <select id="chartCostsByRequesterYear" onchange="renderCharts()"></select></label><label>Lună <select id="chartCostsByRequesterMonth" onchange="renderCharts()"><option value="">Toate lunile</option><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select></label></div><div id="chartCostsByRequester"></div></div></div>
 <div class="panel"><h2>Workload tehnicieni – Work Orders + Mentenanță Preventivă</h2>
 <div class="filters" style="grid-template-columns:repeat(auto-fit,minmax(180px,240px))">
 <div class="field"><label>Luna analizată</label><input type="month" id="chartWorkloadMonth" onchange="renderWorkloadChart()"></div>
@@ -150,7 +151,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 <div id="chartWorkloadMetrics" class="cards"></div>
 <div id="chartWorkloadBars"></div>
 <div id="chartWorkloadTable"></div>
-<p class="subnote">Orele WO sunt atribuite lunii închiderii/începerii lucrării; orele preventive lunii execuției. Workload = (ore WO + ore preventive) / capacitate lunară. Filtrele de stare/hală de mai sus nu modifică acest grafic, care include toate lucrările tehnicienilor.</p>
+<p class="subnote">Orele WO sunt atribuite lunii închiderii/începerii lucrării; orele preventive lunii execuției. Workload = (ore WO + ore preventive) / capacitate lunară. Graficul workload are propriul selector de lună și an. Filtrele de stare/hală de mai sus nu modifică acest grafic, care include toate lucrările tehnicienilor.</p>
 </div>
 <div class="panel"><h2>Detalii centralizate</h2><div id="chartDetails"></div></div>
 </section>
@@ -510,10 +511,19 @@ function renderCharts(){
  });
  const sum=data.reduce((a,o)=>a+(Number(o.actualCost)||0),0);
  $('chartMetrics').innerHTML=metric('Total WO',data.length,'Anul '+y)+metric('Deschise',data.filter(o=>!isClosed(o)).length,'În lucru')+metric('Închise',data.filter(isClosed).length,'Finalizate / respinse')+metric('Overdue',data.filter(isOverdue).length,'Inclusiv închise târziu')+metric('Cheltuieli',money(sum),'Costuri reale');
- const months=['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Noi','Dec'];
- const group=(key)=>{const m=new Map();data.forEach(o=>{const k=key(o)||'Nespecificat';const v=m.get(k)||{name:k,count:0,cost:0,overdue:0};v.count++;v.cost+=Number(o.actualCost)||0;if(isOverdue(o))v.overdue++;m.set(k,v)});return [...m.values()]};
- const byLoc=group(o=>o.location),byReq=group(o=>o.requester),byMonth=group(o=>{const d=o.dateSubmitted||String(o.created||'').slice(0,10);return /^\d{4}-\d{2}/.test(d)?d.slice(5,7):'Nespecificat'});
- const monthly=months.map((name,i)=>byMonth.find(x=>x.name===String(i+1).padStart(2,'0'))||{name,count:0,cost:0,overdue:0});
+ const months=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'));
+ const chartData=(id)=>{
+  const ye=$(`${id}Year`),mo=$(`${id}Month`),previous=ye.value;
+  const allYears=new Set([new Date().getFullYear()]);
+  orders.forEach(o=>{const d=o.dateSubmitted||String(o.created||'').slice(0,10);if(/^\d{4}-\d{2}/.test(d))allYears.add(Number(d.slice(0,4)))});
+  ye.innerHTML=[...allYears].sort((a,b)=>b-a).map(v=>`<option value="${v}">${v}</option>`).join('');
+  ye.value=allYears.has(Number(previous))?previous:y;
+  const yy=ye.value,mm=mo.value;
+  return orders.filter(o=>{const d=o.dateSubmitted||String(o.created||'').slice(0,10);return d.startsWith(yy+(mm?'-'+mm:''))&&(!loc||o.location===loc)&&(!st||(st==='closed'?isClosed(o):st==='open'?!isClosed(o):isOverdue(o)))});
+ };
+ const group=(items,key)=>{const m=new Map();items.forEach(o=>{const k=key(o)||'Nespecificat';const v=m.get(k)||{name:k,count:0,cost:0,overdue:0};v.count++;v.cost+=Number(o.actualCost)||0;if(isOverdue(o))v.overdue++;m.set(k,v)});return [...m.values()]};
+ const chartGroups=(id,key)=>group(chartData(id),key);
+ const monthly=(id)=>{const grouped=chartGroups(id,o=>{const d=o.dateSubmitted||String(o.created||'').slice(0,10);return /^\d{4}-\d{2}/.test(d)?d.slice(5,7):'Nespecificat'});return months.map(name=>grouped.find(x=>x.name===name)||{name,count:0,cost:0,overdue:0})};
  const barChart=(rows,field,formatter)=>{
   if(!rows.length)return '<div class="empty">Nu există date pentru filtrele selectate.</div>';
   const max=Math.max(1,...rows.map(x=>x[field]));
@@ -521,13 +531,13 @@ function renderCharts(){
  };
  const byCount=(rows)=>barChart(rows.sort((a,b)=>b.count-a.count),'count',n=>n);
  const byCost=(rows)=>barChart(rows.sort((a,b)=>b.cost-a.cost),'cost',n=>money(n));
- $('chartByLocation').innerHTML=byCount([...byLoc]);
- $('chartByMonth').innerHTML=barChart(monthly,'count',n=>n);
- $('chartByRequester').innerHTML=byCount([...byReq]);
- $('chartCostsByLocation').innerHTML=byCost([...byLoc]);
- $('chartCostsByMonth').innerHTML=barChart(monthly,'cost',n=>money(n));
- $('chartCostsByRequester').innerHTML=byCost([...byReq]);
- const details=[...byLoc].sort((a,b)=>b.count-a.count);
+ $('chartByLocation').innerHTML=byCount(chartGroups('chartByLocation',o=>o.location));
+ $('chartByMonth').innerHTML=barChart(monthly('chartByMonth'),'count',n=>n);
+ $('chartByRequester').innerHTML=byCount(chartGroups('chartByRequester',o=>o.requester));
+ $('chartCostsByLocation').innerHTML=byCost(chartGroups('chartCostsByLocation',o=>o.location));
+ $('chartCostsByMonth').innerHTML=barChart(monthly('chartCostsByMonth'),'cost',n=>money(n));
+ $('chartCostsByRequester').innerHTML=byCost(chartGroups('chartCostsByRequester',o=>o.requester));
+ const details=group(data,o=>o.location).sort((a,b)=>b.count-a.count);
  renderWorkloadChart();
  $('chartDetails').innerHTML=details.length?`<div class="tablewrap"><table style="min-width:600px"><thead><tr><th>Hală / locație</th><th>Nr. WO</th><th>Overdue</th><th>Cheltuieli (RON)</th></tr></thead><tbody>${details.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.count}</td><td>${r.overdue}</td><td>${money(r.cost)}</td></tr>`).join('')}<tr><th>Total</th><th>${data.length}</th><th>${data.filter(isOverdue).length}</th><th>${money(sum)}</th></tr></tbody></table></div>`:'<div class="empty">Nu există date.</div>';
 }
