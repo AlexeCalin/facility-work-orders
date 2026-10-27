@@ -59,6 +59,18 @@ body.first-order header, body.first-order .nav, body.first-order #page-dashboard
 body.first-order #page-list, body.first-order #page-charts, body.first-order #page-technicians,
 body.first-order #page-detail, body.first-order #page-settings, body.first-order main > div:last-child {display:none!important}
 body.first-order #page-new{display:block!important}
+body.first-order.public-view #page-new{display:none!important}
+body.first-order.public-view #page-public{display:block!important}
+body.first-order.public-view main{max-width:1350px}
+.public-shortcuts{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0 0}
+.public-shortcuts button{flex:1;min-width:150px;font-size:15px;padding:14px}
+.public-return{position:fixed;left:16px;bottom:16px;z-index:10002;box-shadow:0 5px 20px #0003}
+.public-view .portal-back{display:none!important}
+.public-view .public-return{display:block!important}
+body:not(.public-view) .public-return{display:none!important}
+.public-summary{color:#526277;font-size:13px;margin-bottom:14px}
+.public-table{min-width:750px}
+@media(max-width:520px){.public-shortcuts{flex-direction:column}}
 body.first-order main{max-width:1000px;padding-top:28px}
 body.first-order #page-new .panel{margin-bottom:0}
 /* Prima pagina: doar sectiunea requester si actiunile */
@@ -91,6 +103,8 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 </div>
 <header><div><h1>Facility Work Orders</h1><p>Buildings · Utilities · Outdoor areas · Facility services</p></div></header>
 <main>
+<section id="page-public" class="hidden"><div class="panel"><h2 id="publicTitle">Work Orders</h2><p class="public-summary" id="publicCount">Se încarcă...</p><div class="filters"><input id="publicSearch" placeholder="Caută după ID, hală, requester sau descriere" oninput="renderPublicOrders()"><select id="publicLocation" onchange="renderPublicOrders()"><option value="">Toate halele / locațiile</option></select></div><div id="publicTable"></div></div></section>
+<button type="button" class="public-return" onclick="returnToPublicCreate()">← Create Facility Work Order</button>
 <div class="nav no-print">
 <button id="tab-dashboard" class="active" onclick="showPage('dashboard')">Overview</button>
 <button id="tab-list" onclick="showPage('list')">All Work Orders</button>
@@ -217,7 +231,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 <div id="listTable"></div><p id="listCount" style="color:var(--muted);font-size:12px"></p>
 </div></section>
 <section id="page-new" class="hidden">
-<div class="panel"><h2 id="formTitle">Create Facility Work Order</h2>
+<div class="panel"><h2 id="formTitle">Create Facility Work Order</h2><div class="public-shortcuts" id="publicShortcuts"><button type="button" onclick="openPublicOrders('closed')">Închise</button><button type="button" class="secondary" onclick="openPublicOrders('open')">Deschise</button></div>
 <form id="woForm" onsubmit="saveOrder(event)">
 <input type="hidden" id="editId">
 <div class="requester-section">
@@ -268,6 +282,7 @@ const sb=window.supabase.createClient("https://fuuhssegewbkcaladcbt.supabase.co"
 let isAdmin=false;
 let adminPassword=''; // doar în memoria paginii; nu se salvează în browser
 let busy=false;
+let publicOrders=[];let publicMode='open';
 const EDGE_URL='https://fuuhssegewbkcaladcbt.supabase.co/functions/v1/facility-admin';
 async function adminRequest(action,payload={},password=adminPassword){
  const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':'sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4','x-facility-password':password},body:JSON.stringify({action,...payload})});
@@ -286,6 +301,38 @@ async function publicRequest(o){
  let data;try{data=await res.json()}catch{throw new Error('Răspuns invalid de la Supabase.')} 
  if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
  return data;
+}
+// Read-only public lists: server must explicitly support action publicList and return sanitized fields.
+async function openPublicOrders(mode){
+ if(isAdmin)return;
+ publicMode=mode==='closed'?'closed':'open';
+ document.body.classList.add('public-view');
+ $('publicTitle').textContent=publicMode==='closed'?'Work Orders Închise':'Work Orders Deschise';
+ $('publicCount').textContent='Se încarcă lista din Supabase...';
+ $('publicTable').innerHTML='';
+ $('publicSearch').value='';
+ try{
+  const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':'sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4'},body:JSON.stringify({action:'publicList',status:publicMode})});
+  const data=await res.json();
+  if(!res.ok)throw Error(data.error||'HTTP '+res.status);
+  if(!Array.isArray(data.orders))throw Error('Răspunsul publicList nu conține lista de Work Orders.');
+  publicOrders=data.orders;
+  const locations=[...new Set(publicOrders.map(o=>String(o.location||'')).filter(Boolean))].sort();
+  $('publicLocation').innerHTML='<option value="">Toate halele / locațiile</option>'+locations.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`).join('');
+  renderPublicOrders();
+ }catch(e){$('publicCount').textContent='Lista nu este disponibilă momentan.';$('publicTable').innerHTML=`<div class="empty">${esc(e.message||e)}<p>Este necesară activarea citirii publice securizate în Supabase.</p></div>`;}
+}
+function returnToPublicCreate(){
+ document.body.classList.remove('public-view');
+ publicOrders=[];
+ newOrder();
+ window.scrollTo(0,0);
+}
+function renderPublicOrders(){
+ const q=($('publicSearch').value||'').trim().toLowerCase();const loc=$('publicLocation').value;
+ const rows=publicOrders.filter(o=>(!loc||o.location===loc)&&(!q||[o.id,o.requester,o.location,o.type,o.description].some(v=>String(v||'').toLowerCase().includes(q))));
+ $('publicCount').textContent=`${rows.length} din ${publicOrders.length} Work Orders · doar vizualizare`;
+ $('publicTable').innerHTML=rows.length?`<div class="tablewrap"><table class="public-table"><thead><tr><th>WO ID</th><th>Data cererii</th><th>Requester</th><th>Hală / locație</th><th>Tip / descriere</th><th>Status</th><th>Target Date</th><th>Date Completed</th></tr></thead><tbody>${rows.map(o=>`<tr><td><b>${esc(o.id)}</b></td><td>${esc(o.dateSubmitted||'—')}</td><td>${esc(o.requester||'—')}</td><td>${esc(o.location||'—')}</td><td><b>${esc(o.type||'—')}</b><div class="desc">${esc(o.description||'')}</div></td><td>${esc(o.status||'—')}</td><td>${esc(o.targetDate||'—')}</td><td>${esc(o.dateCompleted||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nu există Work Orders pentru această selecție.</div>';
 }
 async function cloudOrder(o){
  const newAttachments=o.newAttachments||[];
@@ -777,7 +824,7 @@ accessForm.addEventListener('submit', async function(event){
   await refreshCloud();
   accessGate.classList.add('hidden');
   $('accessPassword').value='';
-  document.body.classList.remove('first-order');
+  document.body.classList.remove('first-order','public-view');
   $('accessError').textContent='';
   showPage('dashboard');
   $('pushSettings').style.display='block';
