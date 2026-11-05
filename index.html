@@ -227,6 +227,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 <section id="page-list" class="hidden">
 <div class="panel">
 <h2>All Work Orders</h2>
+<div class="nav no-print" aria-label="Work Order categories"><button type="button" id="wo-tab-open" class="active" onclick="setWorkOrderCategory('open')">Opened <span id="wo-open-count"></span></button><button type="button" id="wo-tab-closed" onclick="setWorkOrderCategory('closed')">Closed <span id="wo-closed-count"></span></button></div>
 <div class="filters">
 <input id="search" placeholder="Search ID, requester, description..." oninput="renderList()">
 <select id="fStatus" onchange="renderList()"><option value="">All statuses</option></select>
@@ -771,7 +772,23 @@ function tableHTML(arr){if(!arr.length)return '';return `<div class="tablewrap">
   ${esc(o.dateCompleted || '—')}
 </td><td><button class="small" onclick="showDetail('${o.id}')">Open</button>
 <button class="small secondary" onclick="editOrder('${o.id}')">Edit</button></td></tr>`).join('')}</tbody></table></div>`}
-function renderList(){refreshWorkOrderFilterOptions();let a=filtered();$('listTable').innerHTML=tableHTML(a)||'<div class="empty">No work orders found. Create your first work order.</div>';$('listCount').textContent=`Showing ${a.length} of ${orders.length} work orders`}
+let workOrderCategory='open';
+function setWorkOrderCategory(category){
+ workOrderCategory=category==='closed'?'closed':'open';
+ renderList();
+}
+function renderList(){
+ refreshWorkOrderFilterOptions();
+ const openTotal=orders.filter(o=>!isClosed(o)).length;
+ const closedTotal=orders.filter(isClosed).length;
+ $('wo-open-count').textContent=`(${openTotal})`;
+ $('wo-closed-count').textContent=`(${closedTotal})`;
+ $('wo-tab-open').classList.toggle('active',workOrderCategory==='open');
+ $('wo-tab-closed').classList.toggle('active',workOrderCategory==='closed');
+ const a=filtered().filter(o=>workOrderCategory==='closed'?isClosed(o):!isClosed(o));
+ $('listTable').innerHTML=tableHTML(a)||'<div class="empty">No work orders found in this category.</div>';
+ $('listCount').textContent=`Showing ${a.length} of ${workOrderCategory==='closed'?closedTotal:openTotal} ${workOrderCategory==='closed'?'closed':'opened'} work orders`;
+}
 function showDetail(id){let o=orders.find(x=>x.id===id);if(!o)return;let rows=[['WO ID',o.id],['Status',o.status],['Submitted',o.dateSubmitted],['Requester',o.requester],['Department',o.department],['Location',o.location],['Request type',o.type],['Operational impact',o.impact],['Requested priority',o.requestedPriority],['Facility priority',o.priority],['Problem / request description',o.description],['Assigned to',o.assignments?.length?o.assignments.map(a=>`${a.technician} (${Number(a.hours)||0} h)`).join('\n'):o.assigned],['Target date',o.targetDate],['Date completed',o.dateCompleted],['Actual cost (RON)',o.actualCost],['Estimated labor hours',o.estimatedHours],['Actual labor hours',o.actualHours],['Facility notes / work performed',o.notes],['Days open / duration',age(o)+' days'],['Overdue',isOverdue(o)?'YES':'No']];const attachmentHTML=(o.attachments||[]).length?'<div class="field full"><label>Attached files</label>'+o.attachments.map(a=>`<button class="small secondary" style="margin:3px" onclick="openWoAttachment(${JSON.stringify(o.id).replace(/"/g,'&quot;')},${JSON.stringify(a.path).replace(/"/g,'&quot;')})">📎 ${esc(a.name)}</button>`).join('')+'</div>':'';$('detailPanel').innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:start"><div><h2 style="font-size:22px;margin-bottom:5px">${esc(o.id)} · Facility Work Order</h2><div>${pill(o.priority,priorityClass(o.priority))} ${pill(o.status,statusClass(o.status))} ${isOverdue(o)?pill('OVERDUE','p1'):''}</div></div><div class="actions no-print" style="margin:0"><button class="secondary" onclick="showPage('list')">Back to list</button><button onclick="editOrder('${o.id}')">Edit</button><button class="secondary" onclick="printDetail('${o.id}')">Print WO</button><button class="danger" onclick="deleteOrder('${o.id}')">Delete</button></div></div><hr style="border:0;border-top:1px solid #e3e8ef;margin:18px 0"><div class="formgrid">${rows.map(([k,v])=>`<div class="field ${['Problem / request description','Reason for priority / business impact','Facility notes / work performed'].includes(k)?'full':''}"><label>${esc(k)}</label><div style="white-space:pre-wrap;padding:4px 0">${esc(v||'—')}</div></div>`).join('')}${attachmentHTML}</div>`;showPage('detail')}
 function printDetail(id){showDetail(id);setTimeout(()=>window.print(),100)}
 async function deleteOrder(id){if(!confirm('Delete work order '+id+'? This cannot be undone.'))return;try{await cloudDelete('facility_work_orders',[id]);orders=orders.filter(o=>o.id!==id)}catch(e){failCloud(e);return;}toast('Work order deleted');showPage('list')}
