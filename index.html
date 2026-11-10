@@ -79,7 +79,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 
 
 /* Buton de revenire la portal, vizibil inclusiv in formularul initial. */
-.portal-back{position:fixed;right:16px;bottom:16px;z-index:10001;display:inline-flex;align-items:center;gap:7px;padding:11px 15px;background:#17324d;color:#fff;text-decoration:none;border:1px solid #dce3ec;border-radius:9px;box-shadow:0 4px 16px #0003;font-weight:700;font-size:13px}
+.portal-back{position:fixed;left:16px;bottom:16px;z-index:10001;display:inline-flex;align-items:center;gap:7px;padding:11px 15px;background:#17324d;color:#fff;text-decoration:none;border:1px solid #dce3ec;border-radius:9px;box-shadow:0 4px 16px #0003;font-weight:700;font-size:13px}
 .portal-back:hover,.portal-back:focus{background:#2463a6;color:#fff}
 @media print{.portal-back{display:none!important}}
 .chart-bars{display:flex;flex-direction:column;gap:11px}.chart-bar-row{display:grid;grid-template-columns:minmax(105px,32%) minmax(70px,1fr) minmax(70px,auto);gap:9px;align-items:center;font-size:12px}.chart-bar-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chart-bar-track{height:16px;background:#edf1f5;border-radius:4px;overflow:hidden}.chart-bar-track span{display:block;height:100%;background:#2463a6;border-radius:4px}.chart-bar-row strong{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}@media(max-width:520px){.chart-bar-row{grid-template-columns:85px minmax(40px,1fr) auto;gap:5px;font-size:10px}}
@@ -484,21 +484,32 @@ function plannerReserve(booked,name,date,hours){
  const key=name.toLowerCase()+'|'+date;
  booked.set(key,(booked.get(key)||0)+hours);
 }
+// Earliest-fit capacity allocation: each technician has their OWN hours, not
+// a shared pool. Pack partial days before opening another working day.
 function plannerAllocate(booked,names,hours,start){
- let remaining=Math.max(0,hours),date=start,finish=start;
- if(!remaining)return {date:null,error:'Introdu Estimated labor hours (mai mare decât 0).'};
- if(!names.length)return {date:null,error:'Selectează cel puțin un tehnician în Assigned to.'};
- if(names.some(n=>!plannerTech(n)))return {date:null,error:'Un tehnician selectat nu există în Settings → Technicians.'};
- for(let i=0;i<730&&remaining>0.00001;i++,date=plannerNext(date)){
-  for(const name of names){
-   const cap=plannerDailyCapacity(name,date),key=name.toLowerCase()+'|'+date;
-   const free=Math.max(0,cap-(booked.get(key)||0));
-   const take=Math.min(free,remaining);
-   if(take>0){plannerReserve(booked,name,date,take);remaining-=take;finish=date;}
+ const unique=[...new Set(names.map(n=>String(n||'').trim()).filter(Boolean))];
+ if(!(Number(hours)>0))return {date:null,error:'Introdu Estimated labor hours (mai mare decât 0).'};
+ if(!unique.length)return {date:null,error:'Selectează cel puțin un tehnician în Assigned to.'};
+ if(unique.some(n=>!plannerTech(n)))return {date:null,error:'Un tehnician selectat nu există în Settings → Technicians.'};
+ const remaining=new Map(unique.map(n=>[n.toLowerCase(),Number(hours)]));
+ let date=start,finish=start;
+ for(let i=0;i<730&&[...remaining.values()].some(h=>h>0.00001);i++,date=plannerNext(date)){
+  // A shared WO is allowed on this date only when every still-needed
+  // technician has positive available capacity.
+  const pending=unique.filter(n=>remaining.get(n.toLowerCase())>0.00001);
+  if(!pending.every(n=>plannerDailyCapacity(n,date)>0))continue;
+  const free=pending.map(n=>Math.max(0,plannerDailyCapacity(n,date)-(booked.get(n.toLowerCase()+'|'+date)||0)));
+  if(free.some(h=>h<=0.00001))continue;
+  for(let j=0;j<pending.length;j++){
+   const n=pending[j],key=n.toLowerCase(),take=Math.min(free[j],remaining.get(key));
+   if(take>0.00001){plannerReserve(booked,n,date,take);remaining.set(key,remaining.get(key)-take);finish=date;}
   }
  }
- return remaining>0.00001?{date:null,error:'Capacitatea disponibilă nu permite programarea în următorii 2 ani.'}:{date:finish};
+ return [...remaining.values()].some(h=>h>0.00001)
+  ?{date:null,error:'Capacitatea disponibilă nu permite programarea în următorii 2 ani.'}
+  :{date:finish};
 }
+
 function calculateAutoTarget(current){
  const booked=new Map(),start=today();
  const names=plannerAssignments(current),hours=Number(current.estimatedHours)||0;
@@ -527,7 +538,7 @@ function calculateAutoTarget(current){
  const result=plannerAllocate(booked,names,hours,(current.dateSubmitted||start)>start?current.dateSubmitted:start);
  if(result.date){
   const freeToday=names.reduce((sum,n)=>sum+Math.max(0,plannerDailyCapacity(n,start)-(booked.get(n.toLowerCase()+'|'+start)||0)),0);
-  result.info='Calculat pentru '+names.length+' tehnician(i), '+hours+' ore estimate; WO deschise și PM incluse. Maxim 8 ore/zi/tehnician, fără weekend. Orele fără estimare blochează calculul.';
+  result.info='Planificare compactă: se ocupă mai întâi orele libere din zilele deja utilizate. '+names.length+' tehnician(i), '+hours+' ore per tehnician pentru estimarea generală; maximum 8 ore/zi, fără weekend. WO și PM incluse.';
  }
  return result;
 }
@@ -560,7 +571,7 @@ function replanAllocate(booked,o,from,entries){
  for(let i=0;i<730&&[...remaining.values()].some(x=>x>0.00001);i++,date=plannerNext(date)){
   // A shared WO begins on a day when all assigned technicians have capacity.
   const unfinished=assignments.filter(x=>remaining.get(x.name.toLowerCase())>0.00001);
-  if(!unfinished.every(x=>plannerDailyCapacity(x.name,date)>0))continue;
+  if(!unfinished.every(x=>plannerDailyCapacity(x.name,date)-(booked.get(x.name.toLowerCase()+'|'+date)||0)>0.00001))continue;
   for(const a of unfinished){
    const key=a.name.toLowerCase()+'|'+date;
    const free=Math.max(0,plannerDailyCapacity(a.name,date)-(booked.get(key)||0));
@@ -978,7 +989,7 @@ function tableHTML(arr){if(!arr.length)return '';return `<div class="tablewrap">
 <button class="small secondary" onclick="editOrder('${o.id}')">Edit</button></td></tr>`).join('')}</tbody></table></div>`}
 
 // Calendar compact: 5 working days, one row per technician; click a day for WO details.
-let woCalAnchor=new Date(),woCalMode='week',woCalSelected='',woCalShiftFilter='';
+let woCalAnchor=new Date(),woCalMode='week',woCalSelected='',woCalShiftFilter='',woCalSelectedTech='';
 function woCalDate(d){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
 function woCalMonday(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-(x.getDay()+6)%7);return x}
 function woCalISOWeek(d){
@@ -1007,6 +1018,29 @@ function woCalWeekYearChanged(){
 function woCalMove(n){woCalAnchor.setDate(woCalAnchor.getDate()+n*(woCalMode==='year'?365:woCalMode==='week'?7:1));woCalSelected='';renderWoCalendar()}
 function woCalSelectMonth(month){woCalAnchor=new Date(month+'-01T12:00:00');woCalMode='week';woCalSelected='';renderWoCalendar()}
 function woCalSelect(date){woCalSelected=date;woCalMode='day';woCalAnchor=new Date(date+'T12:00:00');renderWoCalendar()}
+function woCalSelectTechnician(date,technician){
+ woCalSelected=date;
+ woCalSelectedTech=technician;
+ // Keep the weekly grid visible and show the selected technician's orders below it.
+ if(woCalMode==='year')woCalMode='week';
+ woCalAnchor=new Date(date+'T12:00:00');
+ renderWoCalendar();
+ const detail=document.getElementById('woCalTechnicianDetails');
+ if(detail)detail.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function woCalTechnicianDetail(){
+ if(!woCalSelected||!woCalSelectedTech)return '';
+ const t=technicians.find(x=>techName(x)===woCalSelectedTech);
+ if(!t)return '';
+ const rows=woCalEntries(t,woCalSelected).filter(x=>x.order);
+ const planned=rows.filter(x=>x.kind==='wo').reduce((n,x)=>n+x.hours,0);
+ const completed=rows.filter(x=>x.kind==='done').reduce((n,x)=>n+x.hours,0);
+ return `<div class="panel" id="woCalTechnicianDetails" style="margin-top:14px;border-left:4px solid #2463a6">
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h2 style="margin:0">${esc(techName(t))} · ${esc(woCalSelected)} · ${uiText('Schimb','Shift')} ${esc(t.shift||'—')}</h2><button class="small secondary" onclick="woCalSelectedTech='';woCalSelected='';renderWoCalendar()">✕ ${uiText('Închide','Close')}</button></div>
+ <p class="subnote">${uiText('Planificate','Planned')}: <b>${planned.toFixed(2)} h</b> · ${uiText('Realizate','Completed')}: <b>${completed.toFixed(2)} h</b> · ${uiText('Capacitate zilnică','Daily capacity')}: 8 h</p>
+ ${rows.length?`<div class="tablewrap"><table style="min-width:650px"><thead><tr><th>Work Order</th><th>${uiText('Descriere','Description')}</th><th>Status</th><th>${uiText('Tip ore','Hours type')}</th><th>${uiText('Ore în ziua selectată','Hours on selected day')}</th><th>Target Date</th></tr></thead><tbody>${rows.map(x=>`<tr><td><button type="button" class="small secondary" onclick="showDetail('${esc(x.id)}')">${esc(x.id)}</button></td><td class="desc">${esc(x.order.description||'—')}</td><td>${esc(x.order.status||'—')}</td><td>${x.kind==='done'?uiText('Realizate','Completed'):uiText('Planificate','Planned')}</td><td><b>${Number(x.hours).toFixed(2)} h</b></td><td>${esc(x.order.targetDate||'—')}</td></tr>`).join('')}</tbody></table></div>`:`<p>${uiText('Nu există Work Order-e pentru acest tehnician în ziua selectată.','No Work Orders for this technician on the selected day.')}</p>`}
+ </div>`;
+}
 function woCalAssignments(o,name){const assignments=Array.isArray(o.assignments)&&o.assignments.length?o.assignments:[{technician:o.assigned||'',hours:o.actualHours||0}];return assignments.filter(a=>String(a.technician||'').trim().toLowerCase()===name.toLowerCase())}
 
 // Daily allocations for the calendar. The same priority and capacity rules as the target planner.
@@ -1016,8 +1050,15 @@ function woCalDailySchedule(){
   const pseudo={id:'PM:'+p.id,assignments:[{technician:p.assigned,hours:Number(p.estimatedHours)}]};
   replanAllocate(booked,pseudo,p.due>start?p.due:start,entries);
  }}
- const open=orders.filter(o=>!isClosed(o)).sort((a,b)=>replanStart(a).localeCompare(replanStart(b))||String(a.id).localeCompare(String(b.id)));
- for(const o of open)replanAllocate(booked,o,replanStart(o)>start?replanStart(o):start,entries);
+ // Fill the earliest available working days; a Target Date is a deadline,
+ // not a reason to leave preceding days idle. Priority is respected.
+ const rank=o=>{const n=priorities.indexOf(o.priority);return n<0?99:n;};
+ const open=orders.filter(o=>!isClosed(o)).sort((a,b)=>rank(a)-rank(b)||String(a.dateSubmitted||'').localeCompare(String(b.dateSubmitted||''))||String(a.id).localeCompare(String(b.id)));
+ for(const o of open){
+  const earliest=o.dateStarted||o.dateSubmitted||start;
+  const begin=earliest>start?earliest:start;
+  replanAllocate(booked,o,begin,entries);
+ }
  return entries;
 }
 let woCalScheduleCache=null;
@@ -1035,7 +1076,7 @@ function woCalCell(t,date){
  const cls=late.length?'wo-late':pending.length?'wo-plan':done.length?'wo-done':'wo-blank';
  const pct=Math.round((actual+planned)/8*100);
  const detail=arr.map(x=>x.id+': '+x.hours.toFixed(2)+'h').join(' | ');
- return `<button type="button" class="wo-cell ${cls}" style="width:100%;border:0" onclick="woCalSelect('${date}')" title="${esc(detail)}">${arr.length?`${pct}% <small style="display:block">${actual.toFixed(1)}h ${uiText('realizate','completed')} · ${planned.toFixed(1)}h ${uiText('planificate','planned')}</small>`:'—'}</button>`;
+ return `<button type="button" class="wo-cell ${cls}" style="width:100%;border:0" onclick="woCalSelectTechnician('${date}', '${esc(techName(t)).replace(/'/g, '&#39;')}')" title="${esc(detail)}">${arr.length?`${pct}% <small style="display:block">${actual.toFixed(1)}h ${uiText('realizate','completed')} · ${planned.toFixed(1)}h ${uiText('planificate','planned')}</small>`:'—'}</button>`;
 }
 function renderWoCalendar(){
  woCalScheduleCache=woCalDailySchedule();
@@ -1066,7 +1107,7 @@ function renderWoCalendar(){
  const list=techs.flatMap(t=>woCalEntries(t,date).filter(x=>x.order).map(x=>({t,o:x.order,h:x.hours,kind:x.kind})));
  details=`<div class="panel" style="margin-top:12px"><h2>Work Orders · ${date}</h2>${list.length?`<div class="tablewrap"><table style="min-width:650px"><thead><tr><th>Tehnician</th><th>Schimb</th><th>WO</th><th>Status</th><th>Ore</th></tr></thead><tbody>${list.map(({t,o,h,kind})=>`<tr><td>${esc(techName(t))}</td><td>${esc(t.shift||'—')}</td><td><button class="small secondary" onclick="showDetail('${esc(o.id)}')">${esc(o.id)}</button></td><td>${esc(o.status)}</td><td>${esc(h.toFixed(2))}</td></tr>`).join('')}</tbody></table></div>`:'<p>Nu există lucrări atribuite pentru această zi.</p>'}</div>`;
  }
- holder.innerHTML=controls+table+details+`<p class="subnote">* Orele estimate sunt distribuite pe zile lucrătoare, în limita capacității disponibile, cu lucrările existente programate primele. Este o simulare locală, nu o rezervare centralizată. Verde = ore efective / 8h pentru tehnician. Lucrările fără tehnician, Target Date sau ore estimate nu pot fi planificate corect. Schimburile A/B/C sunt cele configurate în Settings.</p>`;
+ holder.innerHTML=controls+table+woCalTechnicianDetail()+details+`<p class="subnote">* Orele sunt compactate în primele intervale disponibile pentru o încărcare cât mai apropiată de 100%, cu respectarea priorităților și a limitei zilnice. Este o simulare locală, nu o rezervare centralizată. Verde = ore efective / 8h pentru tehnician. Lucrările fără tehnician, Target Date sau ore estimate nu pot fi planificate corect. Schimburile A/B/C sunt cele configurate în Settings.</p>`;
 }
 
 let workOrderCategory='open';
