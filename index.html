@@ -128,6 +128,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 <button id="tab-new" onclick="newOrder()">＋ Create Work Order</button>
 <button id="tab-pm" onclick="showPage('pm')">Preventive Maintenance</button>
 <button id="tab-settings" onclick="showPage('settings')">⚙ Settings</button>
+<button type="button" id="facilityLogoutButton" class="danger" onclick="logoutFacility()">Logout / Ieșire</button>
 <button onclick="exportExcel()" class="secondary">Export Excel</button> <button onclick="exportCSV()" class="secondary">Export CSV</button><button onclick="window.print()" class="secondary">Print</button>
 <label class="secondary" style="padding:9px 12px;border-radius:7px;cursor:pointer">Import CSV <input type="file" id="importFile" accept=".csv,text/csv" style="display:none" onchange="importCSV(event)"></label>
 </div>
@@ -1152,6 +1153,24 @@ accessForm.addEventListener('submit', async function(event){
  $('pushSettings').style.display='block';
  updatePushStatus().catch(console.error);
 });
+// Explicit logout invalidates the tab session and prevents F5 from restoring it.
+function logoutFacility(){
+ if(!confirm((typeof appLanguage!=='undefined' && appLanguage==='en')?'Log out of Facility Work Orders?':'Vrei să te deconectezi din Facility Work Orders?'))return;
+ isAdmin=false;
+ adminPassword='';
+ sessionStorage.removeItem('facility_tab_credential');
+ sessionStorage.removeItem('facility_tab_view_v2');
+ sessionStorage.removeItem('facility_active_page');
+ sessionStorage.removeItem('facility_wo_category');
+ $('accessPassword').value='';
+ $('accessPassword').type='password';
+ $('accessError').textContent='';
+ $('togglePassword').textContent='Afișează';
+ document.body.classList.remove('public-view');
+ document.body.classList.add('first-order');
+ accessGate.classList.remove('hidden');
+ newOrder();
+}
 // Keep the current view and filters when F5 reloads the same tab.
 const FACILITY_VIEW_KEY='facility_tab_view_v2';
 function saveFacilityView(){
