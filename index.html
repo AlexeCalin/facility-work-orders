@@ -296,7 +296,7 @@ let orders=[];
 let technicians=[];
 const sb=window.supabase.createClient("https://fuuhssegewbkcaladcbt.supabase.co","sb_publishable_1nnRRrCLMem6ZPyAXbFv4Q_A38hpIY4");
 let isAdmin=false;
-let adminPassword=''; // doar în memoria paginii; nu se salvează în browser
+let adminPassword=''; // credential restored only within this browser tab (sessionStorage)
 let busy=false;
 let publicOrders=[];let publicMode='open';
 const EDGE_URL='https://fuuhssegewbkcaladcbt.supabase.co/functions/v1/facility-admin';
@@ -374,6 +374,7 @@ function options(id,arr,first){$(id).innerHTML=(first?'<option value="">'+first+
 options('location',locations,'Select location');options('type',types,'Select request type');options('status',statuses);
 options('fStatus',statuses,'All statuses');options('fLocation',locations,'All locations');options('fType',types,'All request types');
 function showPage(page){
+  if(isAdmin)sessionStorage.setItem('facility_active_page',page);
   ['dashboard','list','charts','new','detail','technicians','settings','pm'].forEach(p=>{
     $('page-'+p).classList.toggle('hidden',p!==page);
   });
@@ -536,6 +537,73 @@ function previewAutoTarget(force=false){
  note.textContent=result.date?result.info:result.error;
  note.style.color=result.date?'#18845b':'#b9770e';
 }
+// Replanning with explicit per-technician remaining hours and cascading WO dates.
+// Only dedicated completed-hours fields count as performed work; assigned hours are planned hours.
+function replanHours(o){
+ const a=Array.isArray(o.assignments)&&o.assignments.length?o.assignments:plannerAssignments(o).map(n=>({technician:n,hours:Number(o.estimatedHours)||0}));
+ const done=o.completedHoursByTechnician||{};
+ return a.filter(x=>x.technician).map(x=>({name:String(x.technician).trim(),hours:Math.max(0,(Number(x.hours)||0)-(Number(done[x.technician])||0))})).filter(x=>x.hours>0.00001);
+}
+function replanBackDate(date,days){let d=date;for(let i=1;i<days;i++){do{const x=new Date(d+'T12:00:00');x.setDate(x.getDate()-1);d=x.toISOString().slice(0,10)}while(![1,2,3,4,5].includes(plannerDay(d)));}return d;}
+function replanStart(o){
+ if(o.scheduleStart)return o.scheduleStart;
+ const h=Math.max(0,...replanHours(o).map(x=>x.hours));
+ return o.targetDate?replanBackDate(o.targetDate,Math.max(1,Math.ceil(h/8))):(o.dateStarted||o.dateSubmitted||today());
+}
+function replanAllocate(booked,o,from,entries){
+ const assignments=replanHours(o),remaining=new Map(assignments.map(x=>[x.name.toLowerCase(),x.hours]));
+ if(!remaining.size)return {finish:o.targetDate||from};
+ if(assignments.some(x=>!plannerTech(x.name)))return {error:'Tehnician inexistent în Settings pentru WO '+o.id};
+ let date=from,finish=from;
+ for(let i=0;i<730&&[...remaining.values()].some(x=>x>0.00001);i++,date=plannerNext(date)){
+  // A shared WO begins on a day when all assigned technicians have capacity.
+  const unfinished=assignments.filter(x=>remaining.get(x.name.toLowerCase())>0.00001);
+  if(!unfinished.every(x=>plannerDailyCapacity(x.name,date)>0))continue;
+  for(const a of unfinished){
+   const key=a.name.toLowerCase()+'|'+date;
+   const free=Math.max(0,plannerDailyCapacity(a.name,date)-(booked.get(key)||0));
+   const take=Math.min(free,remaining.get(a.name.toLowerCase()));
+   if(take>0.00001){plannerReserve(booked,a.name,date,take);remaining.set(a.name.toLowerCase(),remaining.get(a.name.toLowerCase())-take);entries.push({id:o.id,name:a.name,date,hours:take,kind:'wo'});finish=date;}
+  }
+ }
+ if([...remaining.values()].some(x=>x>0.00001))return {error:'Nu există capacitate suficientă pentru '+o.id+' în următorii doi ani.'};
+ return {finish};
+}
+function replanScenario(candidate){
+ const start=today(),booked=new Map(),entries=[];
+ const others=orders.filter(o=>!isClosed(o)&&o.id!==candidate.id).map(o=>({...o}));
+ const unknown=others.filter(o=>plannerAssignments(o).length&&!replanHours(o).length);
+ if(unknown.length)return {error:'Ore necompletate pentru WO: '+unknown.slice(0,5).map(o=>o.id).join(', ')};
+ for(const p of pmPlans||[]){
+  if(p.assigned&&p.due&&Number(p.estimatedHours)>0){
+   const pseudo={id:'PM:'+p.id,assignments:[{technician:p.assigned,hours:Number(p.estimatedHours)}]};
+   const res=replanAllocate(booked,pseudo,p.due>start?p.due:start,entries);
+   if(res.error)return {error:res.error};
+  }
+ }
+ const requested=candidate.targetDate;
+ const desiredStart=replanBackDate(requested,Math.max(1,Math.ceil(Math.max(...replanHours(candidate).map(x=>x.hours),0)/8)));
+ const cand={...candidate,scheduleStart:desiredStart};
+ const jobs=[...others,cand].sort((a,b)=>{
+  const ad=a.id===cand.id,bd=b.id===cand.id;
+  const sa=ad?desiredStart:replanStart(a),sb=bd?desiredStart:replanStart(b);
+  return sa.localeCompare(sb)||(ad?-1:0)-(bd?-1:0)||String(a.id).localeCompare(String(b.id));
+ });
+ const changes=[];
+ for(const o of jobs){
+  const begin=(o.id===cand.id?desiredStart:replanStart(o));
+  const res=replanAllocate(booked,o,begin>start?begin:start,entries);
+  if(res.error)return {error:res.error};
+  if(o.id===cand.id&&res.finish>requested)return {error:'WO-ul nou nu încape până la '+requested+' nici după reprogramare. Prima finalizare posibilă: '+res.finish};
+  if(o.id!==cand.id&&res.finish!==o.targetDate)changes.push({before:o,after:{...o,targetDate:res.finish,scheduleStart:begin},old:o.targetDate||'—',next:res.finish});
+ }
+ const displaced=changes.filter(x=>x.next>x.old);
+ return {candidate:{...candidate,scheduleStart:desiredStart},changes,displaced,entries};
+}
+function replanConfirmText(scenario){
+ return 'CONFLICT DE PLANIFICARE\n\nNoul WO va avea prioritate. Se vor modifica '+scenario.changes.length+' WO-uri:\n\n'+scenario.changes.slice(0,20).map(x=>x.before.id+': '+x.old+' → '+x.next+' ('+replanHours(x.before).map(a=>a.name+' '+a.hours+'h').join(', ')+')').join('\n')+(scenario.changes.length>20?'\n... și alte '+(scenario.changes.length-20)+' WO-uri':'')+'\n\nConfirmi reprogramarea?';
+}
+
 // Enforce the 8-hour/day scheduling ceiling even when Target Date is edited manually.
 // Existing open commitments are reserved first, then the candidate is checked against its deadline.
 function validateWorkOrderCapacity(candidate){
@@ -555,7 +623,17 @@ e.preventDefault();if(busy||!validAssignments()||!validateWoFiles())return;if(is
 [['requester','requester'],['department','department'],['requestDate','dateSubmitted'],['location','location'],['type','type'],['impact','impact'],['requestedPriority','requestedPriority'],['priority','priority'],['status','status'],['description','description'],['targetDate','targetDate'],['actualCost','actualCost'],['estimatedHours','estimatedHours'],['actualHours','actualHours'],['dateCompleted','dateCompleted'],['notes','notes'],['workShift','workShift']].forEach(([a,b])=>o[b]=$(a).value);o.assignments=getAssignments();o.assigned=o.assignments.map(a=>a.technician).join(', ');o.actualHours=String(o.assignments.reduce((sum,a)=>sum+a.hours,0));if (o.dateCompleted) {
   o.status = 'Closed';
 }
-if(isAdmin){const check=validateWorkOrderCapacity(o);if(!check.ok){alert(check.message);busy=false;return;}}
+let replanning=null;
+if(isAdmin&&!isClosed(o)){
+ const check=validateWorkOrderCapacity(o);
+ if(!check.ok){
+  if(!targetManual){alert(check.message);busy=false;return;}
+  replanning=replanScenario(o);
+  if(replanning.error){alert(replanning.error);busy=false;return;}
+  if(replanning.changes.length&&!confirm(replanConfirmText(replanning))){busy=false;return;}
+  o=replanning.candidate;
+ }
+}
 if(!o.dateStarted&&o.status==='In Progress')o.dateStarted=today();if(!o.dateCompleted&&['Completed','Closed'].includes(o.status))o.dateCompleted=today();
 try{
  o.attachments=[...retainedAttachments];
@@ -564,6 +642,14 @@ try{
   o={id:o.id,created:o.created,updated:o.updated,requester:o.requester,department:o.department,dateSubmitted:o.dateSubmitted,location:o.location,type:o.type,impact:o.impact,requestedPriority:o.requestedPriority,priority:o.requestedPriority,status:"New",description:o.description,assigned:"",targetDate:"",dateCompleted:"",actualCost:"",estimatedHours:"",actualHours:"",notes:"",newAttachments:o.newAttachments};
  }
  await cloudOrder(o);
+ if(isAdmin&&replanning){
+  // Save changed dates after the prioritized WO. No completed WO is changed.
+  const failures=[];
+  for(const change of replanning.changes){
+   try{await cloudOrder(change.after)}catch(err){failures.push(change.before.id+': '+(err.message||err));}
+  }
+  if(failures.length)alert('Atenție: WO-ul prioritar a fost salvat, dar unele reprogramări au eșuat:\n'+failures.join('\n')+'\nReîncarcă datele și verifică planificarea.');
+ }
  if(isAdmin){await refreshCloud();o=orders.find(x=>x.id===o.id)||o;}
  }catch(err){failCloud(err);busy=false;return;}busy=false;
 if(document.body.classList.contains('first-order')){
@@ -903,30 +989,14 @@ function woCalAssignments(o,name){const assignments=Array.isArray(o.assignments)
 
 // Daily allocations for the calendar. The same priority and capacity rules as the target planner.
 function woCalDailySchedule(){
- const booked=new Map(), allocations=new Map(), start=today();
- const reserve=(id,name,date,hours,kind)=>{
-  const key=id+'|'+name.toLowerCase()+'|'+date;
-  const entry=allocations.get(key)||{id,name,date,hours:0,kind};entry.hours+=hours;allocations.set(key,entry);
- };
- function allocate(id,names,hours,from,kind){
-  let left=Number(hours)||0,date=from>start?from:start;
-  if(!names.length||left<=0)return;
-  for(let i=0;i<730&&left>0.00001;i++,date=plannerNext(date)){
-   for(const name of names){
-    const key=name.toLowerCase()+'|'+date;
-    const free=Math.max(0,plannerDailyCapacity(name,date)-(booked.get(key)||0));
-    const take=Math.min(left,free);
-    if(take>0.00001){plannerReserve(booked,name,date,take);reserve(id,name,date,take,kind);left-=take;}
-   }
-  }
- }
- if(Array.isArray(pmPlans))for(const p of pmPlans){
-  if(p.assigned&&p.due&&Number(p.estimatedHours)>0)allocate('PM:'+p.id,[p.assigned],p.estimatedHours,p.due,'pm');
- }
- const rank=o=>Math.max(0,priorities.indexOf(o.priority));
- const open=orders.filter(o=>!isClosed(o)).sort((a,b)=>rank(a)-rank(b)||String(a.dateSubmitted||a.created||'').localeCompare(String(b.dateSubmitted||b.created||'')));
- for(const o of open)allocate(o.id,plannerAssignments(o),o.estimatedHours,o.dateStarted||o.dateSubmitted||start,'wo');
- return [...allocations.values()];
+ const booked=new Map(),entries=[],start=today();
+ for(const p of pmPlans||[]){if(p.assigned&&p.due&&Number(p.estimatedHours)>0){
+  const pseudo={id:'PM:'+p.id,assignments:[{technician:p.assigned,hours:Number(p.estimatedHours)}]};
+  replanAllocate(booked,pseudo,p.due>start?p.due:start,entries);
+ }}
+ const open=orders.filter(o=>!isClosed(o)).sort((a,b)=>replanStart(a).localeCompare(replanStart(b))||String(a.id).localeCompare(String(b.id)));
+ for(const o of open)replanAllocate(booked,o,replanStart(o)>start?replanStart(o):start,entries);
+ return entries;
 }
 let woCalScheduleCache=null;
 function woCalEntries(t,date){
@@ -980,6 +1050,7 @@ function renderWoCalendar(){
 let workOrderCategory='open';
 function setWorkOrderCategory(category){
  workOrderCategory=['closed','calendar'].includes(category)?category:'open';
+ if(isAdmin)sessionStorage.setItem('facility_wo_category',workOrderCategory);
  renderList();
 }
 function renderList(){
@@ -1066,6 +1137,7 @@ accessForm.addEventListener('submit', async function(event){
  // Autentificarea reușită nu trebuie anulată dacă încărcarea datelor eșuează.
  adminPassword=password;
  isAdmin=true;
+ sessionStorage.setItem('facility_tab_credential',password);
  accessGate.classList.add('hidden');
  $('accessPassword').value='';
  document.body.classList.remove('first-order','public-view');
@@ -1080,6 +1152,47 @@ accessForm.addEventListener('submit', async function(event){
  $('pushSettings').style.display='block';
  updatePushStatus().catch(console.error);
 });
+// Keep the current view and filters when F5 reloads the same tab.
+const FACILITY_VIEW_KEY='facility_tab_view_v2';
+function saveFacilityView(){
+ if(!isAdmin)return;
+ const page=['dashboard','list','charts','new','detail','technicians','settings','pm'].find(p=>!$('page-'+p).classList.contains('hidden'))||'dashboard';
+ const fields={};
+ document.querySelectorAll('main select,main input[type="search"],main input[type="month"],main input[type="date"]').forEach(el=>{
+  if(el.id && !el.closest('#page-new') && !el.closest('#page-settings'))fields[el.id]=el.value;
+ });
+ sessionStorage.setItem(FACILITY_VIEW_KEY,JSON.stringify({page,category:workOrderCategory,calendar:{mode:woCalMode,anchor:woCalAnchor.toISOString(),selected:woCalSelected,shift:woCalShiftFilter},fields}));
+}
+window.addEventListener('beforeunload',saveFacilityView);
+async function restoreFacilitySession(){
+ const credential=sessionStorage.getItem('facility_tab_credential');
+ if(!credential)return;
+ try{
+  await adminRequest('verify',{},credential);
+  adminPassword=credential;isAdmin=true;
+  accessGate.classList.add('hidden');
+  document.body.classList.remove('first-order','public-view');
+  $('accessPassword').value='';$('accessError').textContent='';
+  await refreshCloud();
+  let state={};try{state=JSON.parse(sessionStorage.getItem(FACILITY_VIEW_KEY)||'{}')}catch(e){}
+  workOrderCategory=['open','closed','calendar'].includes(state.category)?state.category:'open';
+  if(state.calendar){
+   woCalMode=['year','week','day'].includes(state.calendar.mode)?state.calendar.mode:'week';
+   const d=new Date(state.calendar.anchor);if(!isNaN(d.getTime()))woCalAnchor=d;
+   woCalSelected=state.calendar.selected||'';woCalShiftFilter=state.calendar.shift||'';
+  }
+  Object.entries(state.fields||{}).forEach(([id,value])=>{const el=document.getElementById(id);if(el&&[...el.options||[]].some(o=>o.value===value))el.value=value;else if(el&&el.tagName==='INPUT')el.value=value;});
+  showPage(['dashboard','list','charts','technicians','settings','pm'].includes(state.page)?state.page:'dashboard');
+  $('pushSettings').style.display='block';
+  updatePushStatus().catch(console.error);
+ }catch(e){
+  // Invalidated credential: require a fresh login rather than silently bypassing verification.
+  sessionStorage.removeItem('facility_tab_credential');
+  adminPassword='';isAdmin=false;
+  console.warn('Session could not be restored:',e);
+ }
+}
+restoreFacilitySession();
 document.getElementById('togglePassword').addEventListener('click', function(){
   const input=document.getElementById('accessPassword');
   const showing=input.type==='text';
