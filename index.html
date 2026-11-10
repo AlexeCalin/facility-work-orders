@@ -267,7 +267,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 <div class="field full" style="margin-top:14px"><label style="color:white">Attach files (max. 2) · Excel, JPG, JPEG, PDF</label><input id="woAttachments" type="file" accept=".xls,.xlsx,.jpg,.jpeg,.pdf" multiple onchange="validateWoFiles()" style="background:white"><div id="existingAttachments" style="margin-top:8px;color:white"></div><div style="font-size:12px;margin-top:5px">Maximum 2 fișiere, câte 5 MB fiecare.</div></div><div class="requester-note">De completat de catre requester</div>
 </div>
 <div class="formgrid" id="facilityAdminFields">
-<div class="field"><label>Target date · calculat automat</label><input id="targetDate" type="date" oninput="targetManual=true;updateTargetNote()"><div id="targetExplanation" class="subnote">Selectează tehnicianul și completează Estimated labor hours.</div><button type="button" class="small secondary" onclick="targetManual=false;previewAutoTarget(true)">↻ Recalculează automat</button></div>
+<div class="field"><label>Target date · calculat automat</label><input id="targetDate" type="date" oninput="targetManual=true;updateTargetNote();autoWipOnTarget()"><div id="targetExplanation" class="subnote">Selectează tehnicianul și completează Estimated labor hours.</div><button type="button" class="small secondary" onclick="targetManual=false;previewAutoTarget(true)">↻ Recalculează automat</button></div>
 <div class="field"><label>Schimbul lucrării</label><select id="workShift"><option value="">Nespecificat</option><option value="A">Schimb A</option><option value="B">Schimb B</option><option value="C">Schimb C</option></select></div><div class="field"><label>Date completed</label><input id="dateCompleted" type="date"></div>
 <div class="field"><label>Assigned to 1</label><select id="assigned1" onchange="updateAssignmentHours();previewAutoTarget()"></select></div>
 <div class="field"><label>Actual hours · Technician 1</label><input id="assignedHours1" type="number" min="0" step="0.25" value="0" oninput="updateAssignmentHours()"></div>
@@ -460,6 +460,7 @@ async function openWoAttachment(orderId,path){
 }
 let pmPlans=[],pmHistory=[],pmMode='due';
 let targetManual=false;
+function autoWipOnTarget(){if($('targetDate').value&&!$('dateCompleted').value&&!['Closed','Rejected'].includes($('status').value))$('status').value='Wip';}
 function updateTargetNote(){const n=$('targetExplanation');if(n&&targetManual)n.textContent='Target Date introdus manual. Apasă Recalculează pentru data automată.';}
 function newOrder(){ targetManual=false;retainedAttachments=[];$('woAttachments').value='';renderExistingAttachments();$('woForm').reset();loadAssignments({});$('editId').value='';$('formTitle').textContent='Create Facility Work Order';$('requestDate').value=today();$('workShift').value='';$('status').value='New';$('priority').value='P3 - Normal';$('requestedPriority').value='P3 - Normal';showPage('new');previewAutoTarget()}
 // Capacity planner: reserves estimated work across working days, max 8 h per technician/day.
@@ -536,7 +537,7 @@ function previewAutoTarget(force=false){
  const current={id:$('editId').value,dateSubmitted:$('requestDate').value,estimatedHours:$('estimatedHours').value,assignments:getAssignments()};
  const result=calculateAutoTarget(current);el.value=result.date||'';targetManual=false;
  note.textContent=result.date?result.info:result.error;
- note.style.color=result.date?'#18845b':'#b9770e';
+ note.style.color=result.date?'#18845b':'#b9770e';if(result.date)autoWipOnTarget();
 }
 // Replanning with explicit per-technician remaining hours and cascading WO dates.
 // Only dedicated completed-hours fields count as performed work; assigned hours are planned hours.
@@ -572,8 +573,19 @@ function replanAllocate(booked,o,from,entries){
 }
 function replanScenario(candidate){
  const start=today(),booked=new Map(),entries=[];
- const others=orders.filter(o=>!isClosed(o)&&o.id!==candidate.id).map(o=>({...o}));
- const unknown=others.filter(o=>plannerAssignments(o).length&&!replanHours(o).length);
+ const requested=candidate.targetDate;
+ const candidateAssignments=replanHours(candidate);
+ if(!candidateAssignments.length)return {error:'Completează orele planificate pentru tehnicienii WO-ului nou.'};
+ const desiredStart=replanBackDate(requested,Math.max(1,Math.ceil(Math.max(...candidateAssignments.map(x=>x.hours))/8)));
+ const cand={...candidate,scheduleStart:desiredStart};
+ const all=orders.filter(o=>!isClosed(o)&&o.id!==candidate.id);
+ const candidateNames=new Set(candidateAssignments.map(x=>x.name.toLowerCase()));
+ const related=o=>plannerAssignments(o).some(n=>candidateNames.has(n.toLowerCase()));
+ // Unrelated technicians' work orders are never rewritten. They are only
+ // included as fixed capacity reservations when a shared WO connects them.
+ const direct=all.filter(related);
+ const untouched=all.filter(o=>!related(o));
+ const unknown=direct.filter(o=>plannerAssignments(o).length&&!replanHours(o).length);
  if(unknown.length)return {error:'Ore necompletate pentru WO: '+unknown.slice(0,5).map(o=>o.id).join(', ')};
  for(const p of pmPlans||[]){
   if(p.assigned&&p.due&&Number(p.estimatedHours)>0){
@@ -582,24 +594,31 @@ function replanScenario(candidate){
    if(res.error)return {error:res.error};
   }
  }
- const requested=candidate.targetDate;
- const desiredStart=replanBackDate(requested,Math.max(1,Math.ceil(Math.max(...replanHours(candidate).map(x=>x.hours),0)/8)));
- const cand={...candidate,scheduleStart:desiredStart};
- const jobs=[...others,cand].sort((a,b)=>{
+ // Keep unrelated WO fixed: reserve their hours but NEVER save new target dates.
+ // Reserve them before calculating the candidate and its directly affected WOs.
+ for(const o of untouched.sort((a,b)=>replanStart(a).localeCompare(replanStart(b)))){
+  if(!replanHours(o).length)continue;
+  const begin=replanStart(o);
+  const res=replanAllocate(booked,o,begin>start?begin:start,entries);
+  if(res.error)return {error:res.error};
+ }
+ const jobs=[...direct,cand].sort((a,b)=>{
   const ad=a.id===cand.id,bd=b.id===cand.id;
   const sa=ad?desiredStart:replanStart(a),sb=bd?desiredStart:replanStart(b);
   return sa.localeCompare(sb)||(ad?-1:0)-(bd?-1:0)||String(a.id).localeCompare(String(b.id));
  });
  const changes=[];
  for(const o of jobs){
-  const begin=(o.id===cand.id?desiredStart:replanStart(o));
+  const begin=o.id===cand.id?desiredStart:replanStart(o);
   const res=replanAllocate(booked,o,begin>start?begin:start,entries);
   if(res.error)return {error:res.error};
-  if(o.id===cand.id&&res.finish>requested)return {error:'WO-ul nou nu încape până la '+requested+' nici după reprogramare. Prima finalizare posibilă: '+res.finish};
-  if(o.id!==cand.id&&res.finish!==o.targetDate)changes.push({before:o,after:{...o,targetDate:res.finish,scheduleStart:begin},old:o.targetDate||'—',next:res.finish});
+  if(o.id===cand.id&&res.finish>requested)return {error:'WO-ul prioritar nu încape până la '+requested+'. Prima finalizare posibilă: '+res.finish};
+  // Never advance a different WO merely because the planner was recalculated.
+  if(o.id!==cand.id&&o.targetDate&&res.finish>o.targetDate){
+   changes.push({before:o,after:{...o,targetDate:res.finish,scheduleStart:begin},old:o.targetDate,next:res.finish});
+  }
  }
- const displaced=changes.filter(x=>x.next>x.old);
- return {candidate:{...candidate,scheduleStart:desiredStart},changes,displaced,entries};
+ return {candidate:cand,changes,displaced:changes,entries};
 }
 function replanConfirmText(scenario){
  return 'CONFLICT DE PLANIFICARE\n\nNoul WO va avea prioritate. Se vor modifica '+scenario.changes.length+' WO-uri:\n\n'+scenario.changes.slice(0,20).map(x=>x.before.id+': '+x.old+' → '+x.next+' ('+replanHours(x.before).map(a=>a.name+' '+a.hours+'h').join(', ')+')').join('\n')+(scenario.changes.length>20?'\n... și alte '+(scenario.changes.length-20)+' WO-uri':'')+'\n\nConfirmi reprogramarea?';
@@ -623,6 +642,8 @@ async function saveOrder(e){
 e.preventDefault();if(busy||!validAssignments()||!validateWoFiles())return;if(isAdmin){if(!targetManual)previewAutoTarget();if(!$('targetDate').value){alert('Target date nu poate fi calculat. '+$('targetExplanation').textContent);return;}}busy=true;let id=$('editId').value;let existing=orders.find(o=>o.id===id);let o={...(existing||{}),id:id||'FR-'+String(Date.now()).slice(-8),created:existing?.created||new Date().toISOString(),updated:new Date().toISOString()};
 [['requester','requester'],['department','department'],['requestDate','dateSubmitted'],['location','location'],['type','type'],['impact','impact'],['requestedPriority','requestedPriority'],['priority','priority'],['status','status'],['description','description'],['targetDate','targetDate'],['actualCost','actualCost'],['estimatedHours','estimatedHours'],['actualHours','actualHours'],['dateCompleted','dateCompleted'],['notes','notes'],['workShift','workShift']].forEach(([a,b])=>o[b]=$(a).value);o.assignments=getAssignments();o.assigned=o.assignments.map(a=>a.technician).join(', ');o.actualHours=String(o.assignments.reduce((sum,a)=>sum+a.hours,0));if (o.dateCompleted) {
   o.status = 'Closed';
+} else if(isAdmin&&o.targetDate&&!['Closed','Rejected'].includes(o.status)&&!['Closed','Rejected'].includes(existing?.status)){
+  o.status='Wip';
 }
 let replanning=null;
 if(isAdmin&&!isClosed(o)){
