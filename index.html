@@ -1044,6 +1044,35 @@ function woCalTechnicianDetail(){
 function woCalAssignments(o,name){const assignments=Array.isArray(o.assignments)&&o.assignments.length?o.assignments:[{technician:o.assigned||'',hours:o.actualHours||0}];return assignments.filter(a=>String(a.technician||'').trim().toLowerCase()===name.toLowerCase())}
 
 // Daily allocations for the calendar. The same priority and capacity rules as the target planner.
+// Explicitly approve bringing existing deadlines forward when the compact calendar
+// finds an earlier feasible finish. The calendar simulation is not itself persisted.
+async function woCalApplyEarlierTargets(){
+ if(!isAdmin){alert('Este necesară autentificarea ca administrator.');return;}
+ const schedule=woCalDailySchedule(),finishes=new Map();
+ for(const e of schedule){
+  if(e.kind!=='wo')continue;
+  const prev=finishes.get(e.id);
+  if(!prev||e.date>prev)finishes.set(e.id,e.date);
+ }
+ const moves=orders.filter(o=>!isClosed(o)&&o.targetDate&&finishes.has(o.id)&&finishes.get(o.id)<o.targetDate)
+  .map(o=>({order:o,old:o.targetDate,next:finishes.get(o.id)}));
+ if(!moves.length){alert('Nu există Target Date-uri care pot fi devansate în simularea curentă.');return;}
+ const lines=moves.slice(0,25).map(x=>x.order.id+': '+x.old+' → '+x.next);
+ if(!confirm('OPTIMIZARE TARGET DATE\n\nSe propune devansarea a '+moves.length+' Work Order-e, conform simulării calendarului:\n\n'+lines.join('\n')+(moves.length>25?'\n... și alte '+(moves.length-25):'')+'\n\nAplici aceste modificări în Supabase?'))return;
+ let count=0;
+ try{
+  for(const move of moves){
+   // Keep every other field unchanged. Do not rewrite completed or rejected WOs.
+   await adminRequest('upsertOrder',{order:{...move.order,targetDate:move.next,updated:new Date().toISOString()},newAttachments:[]});
+   count++;
+  }
+  await refreshCloud();renderWoCalendar();
+  alert('Au fost devansate '+count+' Work Order-e.');
+ }catch(e){
+  await refreshCloud().catch(()=>{});renderWoCalendar();
+  alert('Optimizare întreruptă după '+count+' modificări. Verifică datele înainte de a relua. '+(e.message||e));
+ }
+}
 function woCalDailySchedule(){
  const booked=new Map(),entries=[],start=today();
  for(const p of pmPlans||[]){if(p.assigned&&p.due&&Number(p.estimatedHours)>0){
@@ -1087,7 +1116,7 @@ function renderWoCalendar(){
  const yearChoices=Array.from({length:11},(_,i)=>iso.year-5+i).map(y=>`<option value="${y}" ${y===iso.year?'selected':''}>${y}</option>`).join('');
  const weekChoices=Array.from({length:woCalWeeksInYear(iso.year)},(_,i)=>`<option value="${i+1}" ${i+1===iso.week?'selected':''}>${uiText('Săptămâna','Week')} ${String(i+1).padStart(2,'0')}</option>`).join('');
  const weekPicker=`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px">An săptămână <select id="woCalWeekYear" onchange="woCalWeekYearChanged()" style="width:auto">${yearChoices}</select></label><label style="display:inline-flex;align-items:center;gap:5px;font-size:12px">Nr. săptămână <select id="woCalWeekNumber" onchange="woCalChooseWeek()" style="width:auto">${weekChoices}</select></label>`;
- const controls=`<div class="wo-cal-controls"><strong>Calendar Work Orders</strong><button class="small secondary" onclick="woCalMove(-1)">◀</button><button class="small secondary" onclick="woCalAnchor=new Date();woCalSelected='';renderWoCalendar()">Astăzi</button><button class="small secondary" onclick="woCalMove(1)">▶</button><select onchange="woCalMode=this.value;woCalSelected='';renderWoCalendar()"><option value="year" ${woCalMode==='year'?'selected':''}>An</option><option value="week" ${woCalMode==='week'?'selected':''}>Săptămână</option><option value="day" ${woCalMode==='day'?'selected':''}>Zi</option></select><select onchange="woCalShiftFilter=this.value;renderWoCalendar()"><option value="">Toate schimburile</option>${['A','B','C'].map(x=>`<option value="${x}" ${woCalShiftFilter===x?'selected':''}>Schimb ${x}</option>`).join('')}</select>${weekPicker}<span>${woCalMode==='year'?'Anul '+woCalAnchor.getFullYear():woCalMode==='week'?days[0]+' – '+days[4]:date}</span></div><div class="wo-cal-legend"><span class="wo-done">Verde: realizat</span><span class="wo-plan">Galben: planificat</span><span class="wo-late">Roșu: overdue</span></div>`;
+ const controls=`<div class="wo-cal-controls"><strong>Calendar Work Orders</strong><button class="small secondary" onclick="woCalMove(-1)">◀</button><button class="small secondary" onclick="woCalAnchor=new Date();woCalSelected='';renderWoCalendar()">Astăzi</button><button class="small secondary" onclick="woCalMove(1)">▶</button><select onchange="woCalMode=this.value;woCalSelected='';renderWoCalendar()"><option value="year" ${woCalMode==='year'?'selected':''}>An</option><option value="week" ${woCalMode==='week'?'selected':''}>Săptămână</option><option value="day" ${woCalMode==='day'?'selected':''}>Zi</option></select><select onchange="woCalShiftFilter=this.value;renderWoCalendar()"><option value="">Toate schimburile</option>${['A','B','C'].map(x=>`<option value="${x}" ${woCalShiftFilter===x?'selected':''}>Schimb ${x}</option>`).join('')}</select>${weekPicker}<button type="button" class="small secondary" onclick="woCalApplyEarlierTargets()">↶ Aplică date mai devreme</button><span>${woCalMode==='year'?'Anul '+woCalAnchor.getFullYear():woCalMode==='week'?days[0]+' – '+days[4]:date}</span></div><div class="wo-cal-legend"><span class="wo-done">Verde: realizat</span><span class="wo-plan">Galben: planificat</span><span class="wo-late">Roșu: overdue</span></div>`;
  const techs=technicians.filter(t=>!woCalShiftFilter||t.shift===woCalShiftFilter).sort((a,b)=>(a.shift||'Z').localeCompare(b.shift||'Z')||techName(a).localeCompare(techName(b),'ro'));
  if(woCalMode==='year'){
   const year=woCalAnchor.getFullYear(),months=Array.from({length:12},(_,i)=>year+'-'+String(i+1).padStart(2,'0'));
