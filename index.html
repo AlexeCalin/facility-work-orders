@@ -97,6 +97,8 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 .pm-legend span{display:inline-flex;align-items:center;gap:5px;font-size:12px}
 .pm-legend i{width:15px;height:15px;display:inline-block;border-radius:3px}
 
+
+.wo-cal-wrap{max-height:72vh;overflow:auto;border:1px solid #dce3ec;border-radius:8px}.wo-cal{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:11px}.wo-cal th,.wo-cal td{border:1px solid #e4eaf1;padding:3px 5px;min-width:38px;text-align:center}.wo-cal thead th{position:sticky;top:0;background:#eaf0f8;z-index:2}.wo-cal .wo-day{position:sticky;left:0;min-width:180px;text-align:left;background:white;z-index:1}.wo-cal thead .wo-day{z-index:3;background:#eaf0f8}.wo-cal .wo-shift .wo-day{padding-left:25px;background:#f6f8fc}.wo-cal .wo-weekend .wo-day{background:#f1f3f6;color:#8792a1}.wo-cal .wo-cell{border-radius:5px;min-width:62px;padding:5px 3px;cursor:pointer;font-weight:700}.wo-cal .wo-done{background:#d9f3e3;color:#176c49}.wo-cal .wo-plan{background:#fff0b3;color:#825700}.wo-cal .wo-late{background:#fbdcda;color:#a52820}.wo-cal .wo-mixed{background:linear-gradient(110deg,#d9f3e3 33%,#fff0b3 33% 66%,#fbdcda 66%);color:#243b53}.wo-cal .wo-plus{padding:2px 7px;margin-right:6px}.wo-cal .wo-blank{background:#fafbfd}.wo-cal .wo-muted{color:#a2aab6}.wo-cal-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}.wo-cal-controls select{width:115px}.wo-cal-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin:10px 0}.wo-cal-legend span{padding:4px 8px;border-radius:5px}
 </style></head>
 <body>
 <a class="portal-back" href="https://alexecalin.github.io/" aria-label="Înapoi la meniul principal">&#8592; Meniu principal</a>
@@ -114,7 +116,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
     </form>
   </div>
 </div>
-<header><div><h1>Facility Work Orders</h1><p>Buildings · Utilities · Outdoor areas · Facility services</p></div></header>
+<header><div><h1>Facility Work Orders</h1><p>Buildings · Utilities · Outdoor areas · Facility services</p></div><div class="no-print" style="display:flex;align-items:center;gap:8px"><label for="appLanguage" style="font-weight:700">Language / Limba</label><select id="appLanguage" style="width:130px" onchange="setAppLanguage(this.value)"><option value="ro">Română</option><option value="en">English</option></select></div></header>
 <main>
 <section id="page-public" class="hidden"><div class="panel"><h2 id="publicTitle">Work Orders</h2><p class="public-summary" id="publicCount">Se încarcă...</p><div class="filters"><input id="publicSearch" placeholder="Caută după ID, hală, requester sau descriere" oninput="renderPublicOrders()"><select id="publicLocation" onchange="renderPublicOrders()"><option value="">Toate halele / locațiile</option></select></div><div id="publicTable"></div></div></section>
 <button type="button" class="public-return" onclick="returnToPublicCreate()">← Create Facility Work Order</button>
@@ -210,7 +212,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
           <label>Last name *</label>
           <input id="technicianLastName" required>
         </div>
-        <div class="field"><label>Function / Position</label><input id="technicianRole" placeholder="e.g. Electromechanic"></div>
+        <div class="field"><label>Function / Position</label><input id="technicianRole" placeholder="e.g. Electromechanic"></div><div class="field"><label>Schimbul tehnicianului *</label><select id="technicianShift" required><option value="A">Schimb A</option><option value="B">Schimb B</option><option value="C">Schimb C</option></select></div>
         <div class="field"><label>Month *</label><input id="technicianMonth" type="month" required onchange="loadTechnicianMonth()"></div>
         <div class="field"><label>Working days in month *</label><input id="technicianWorkingDays" type="number" min="0" max="31" step="1" required oninput="calculateTechnicianCapacity()"></div>
         <div class="field"><label>Vacation days in month *</label><input id="technicianVacationDays" type="number" min="0" max="31" step="1" value="0" required oninput="calculateTechnicianCapacity()"></div>
@@ -227,7 +229,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 <section id="page-list" class="hidden">
 <div class="panel">
 <h2>All Work Orders</h2>
-<div class="nav no-print" aria-label="Work Order categories"><button type="button" id="wo-tab-open" class="active" onclick="setWorkOrderCategory('open')">Opened <span id="wo-open-count"></span></button><button type="button" id="wo-tab-closed" onclick="setWorkOrderCategory('closed')">Closed <span id="wo-closed-count"></span></button></div>
+<div class="nav no-print" aria-label="Work Order categories"><button type="button" id="wo-tab-open" class="active" onclick="setWorkOrderCategory('open')">Opened <span id="wo-open-count"></span></button><button type="button" id="wo-tab-closed" onclick="setWorkOrderCategory('closed')">Closed <span id="wo-closed-count"></span></button><button type="button" id="wo-tab-calendar" onclick="setWorkOrderCategory('calendar')">Calendar</button></div>
 <div class="filters">
 <input id="search" placeholder="Search ID, requester, description..." oninput="renderList()">
 <select id="fStatus" onchange="renderList()"><option value="">All statuses</option></select>
@@ -242,7 +244,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
     Șterge selecția
   </button>
 </div>
-<div id="listTable"></div><p id="listCount" style="color:var(--muted);font-size:12px"></p>
+<div id="listTable"></div><div id="woCalendar" class="hidden"></div><p id="listCount" style="color:var(--muted);font-size:12px"></p>
 </div></section>
 <section id="page-new" class="hidden">
 <div class="panel"><h2 id="formTitle">Create Facility Work Order</h2><div class="public-shortcuts" id="publicShortcuts"><button type="button" onclick="openPublicOrders('closed')">Închise</button><button type="button" class="secondary" onclick="openPublicOrders('open')">Deschise</button></div>
@@ -264,16 +266,16 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 <div class="field full" style="margin-top:14px"><label style="color:white">Attach files (max. 2) · Excel, JPG, JPEG, PDF</label><input id="woAttachments" type="file" accept=".xls,.xlsx,.jpg,.jpeg,.pdf" multiple onchange="validateWoFiles()" style="background:white"><div id="existingAttachments" style="margin-top:8px;color:white"></div><div style="font-size:12px;margin-top:5px">Maximum 2 fișiere, câte 5 MB fiecare.</div></div><div class="requester-note">De completat de catre requester</div>
 </div>
 <div class="formgrid" id="facilityAdminFields">
-<div class="field"><label>Target date</label><input id="targetDate" type="date"></div>
-<div class="field"><label>Date completed</label><input id="dateCompleted" type="date"></div>
-<div class="field"><label>Assigned to 1</label><select id="assigned1" onchange="updateAssignmentHours()"></select></div>
+<div class="field"><label>Target date · calculat automat</label><input id="targetDate" type="date" oninput="targetManual=true;updateTargetNote()"><div id="targetExplanation" class="subnote">Selectează tehnicianul și completează Estimated labor hours.</div><button type="button" class="small secondary" onclick="targetManual=false;previewAutoTarget(true)">↻ Recalculează automat</button></div>
+<div class="field"><label>Schimbul lucrării</label><select id="workShift"><option value="">Nespecificat</option><option value="A">Schimb A</option><option value="B">Schimb B</option><option value="C">Schimb C</option></select></div><div class="field"><label>Date completed</label><input id="dateCompleted" type="date"></div>
+<div class="field"><label>Assigned to 1</label><select id="assigned1" onchange="updateAssignmentHours();previewAutoTarget()"></select></div>
 <div class="field"><label>Actual hours · Technician 1</label><input id="assignedHours1" type="number" min="0" step="0.25" value="0" oninput="updateAssignmentHours()"></div>
-<div class="field"><label>Assigned to 2</label><select id="assigned2" onchange="updateAssignmentHours()"></select></div>
+<div class="field"><label>Assigned to 2</label><select id="assigned2" onchange="updateAssignmentHours();previewAutoTarget()"></select></div>
 <div class="field"><label>Actual hours · Technician 2</label><input id="assignedHours2" type="number" min="0" step="0.25" value="0" oninput="updateAssignmentHours()"></div>
-<div class="field"><label>Assigned to 3</label><select id="assigned3" onchange="updateAssignmentHours()"></select></div>
+<div class="field"><label>Assigned to 3</label><select id="assigned3" onchange="updateAssignmentHours();previewAutoTarget()"></select></div>
 <div class="field"><label>Actual hours · Technician 3</label><input id="assignedHours3" type="number" min="0" step="0.25" value="0" oninput="updateAssignmentHours()"></div>
 <div class="field"><label>Actual cost (RON)</label><input id="actualCost" type="number" min="0" step="0.01"></div>
-<div class="field"><label>Estimated labor hours</label><input id="estimatedHours" type="number" min="0" step="0.25" placeholder="e.g. 3.5"></div>
+<div class="field"><label>Estimated labor hours</label><input id="estimatedHours" type="number" min="0" step="0.25" placeholder="e.g. 3.5" oninput="previewAutoTarget()"></div>
 <div class="field"><label>Actual labor hours</label><input id="actualHours" type="number" min="0" step="0.25" placeholder="Calculated from assigned technicians" readonly></div>
 <div class="field full"><label>Facility notes / work performed</label><textarea id="notes" placeholder="Actions taken, materials, follow-up..."></textarea></div>
 </div>
@@ -307,7 +309,7 @@ async function adminRequest(action,payload={},password=adminPassword){
 async function refreshCloud(){
  if(!isAdmin)return;
  const data=await adminRequest('list');
- orders=data.orders||[];technicians=data.technicians||[];
+ orders=data.orders||[];technicians=data.technicians||[];if($('page-new')&&!$('page-new').classList.contains('hidden'))previewAutoTarget();
  renderDashboard();renderList();renderTechnicians();renderAssignmentOptions();renderWorkloadChart();if(typeof pmRefresh==='function')await pmRefresh();
 }
 async function publicRequest(o){
@@ -454,12 +456,106 @@ async function openWoAttachment(orderId,path){
  try{const result=await adminRequest('attachmentUrl',{orderId,path});window.open(result.url,'_blank','noopener,noreferrer');}
  catch(e){failCloud(e)}
 }
-function newOrder(){ retainedAttachments=[];$('woAttachments').value='';renderExistingAttachments();$('woForm').reset();loadAssignments({});$('editId').value='';$('formTitle').textContent='Create Facility Work Order';$('requestDate').value=today();$('status').value='New';$('priority').value='P3 - Normal';$('requestedPriority').value='P3 - Normal';showPage('new')}
+let pmPlans=[],pmHistory=[],pmMode='due';
+let targetManual=false;
+function updateTargetNote(){const n=$('targetExplanation');if(n&&targetManual)n.textContent='Target Date introdus manual. Apasă Recalculează pentru data automată.';}
+function newOrder(){ targetManual=false;retainedAttachments=[];$('woAttachments').value='';renderExistingAttachments();$('woForm').reset();loadAssignments({});$('editId').value='';$('formTitle').textContent='Create Facility Work Order';$('requestDate').value=today();$('workShift').value='';$('status').value='New';$('priority').value='P3 - Normal';$('requestedPriority').value='P3 - Normal';showPage('new');previewAutoTarget()}
+// Capacity planner: reserves estimated work across working days, max 8 h per technician/day.
+// Existing open WO are scheduled first by priority and request date; PM due dates reserve capacity.
+function plannerDay(d){const x=new Date(d+'T12:00:00');return Number.isNaN(x.getTime())?-1:x.getDay()}
+function plannerNext(d){const x=new Date(d+'T12:00:00');x.setDate(x.getDate()+1);return [x.getFullYear(),String(x.getMonth()+1).padStart(2,'0'),String(x.getDate()).padStart(2,'0')].join('-')}
+function plannerTech(name){return technicians.find(t=>techName(t).toLowerCase()===String(name).trim().toLowerCase())}
+function plannerDailyCapacity(name,date){
+ const t=plannerTech(name);if(!t||![1,2,3,4,5].includes(plannerDay(date)))return 0;
+ const m=date.slice(0,7),d=monthData(t,m);
+ const working=Math.max(0,Number(d.workingDays)||0),vacation=Math.max(0,Number(d.vacationDays)||0);
+ if(!working||vacation>=working)return 0;
+ // Exact vacation dates are not stored; distribute available hours across working days.
+ return Math.max(0,Math.min(8,Number(d.dailyHours)||8))*(working-vacation)/working;
+}
+function plannerAssignments(o){
+ const a=Array.isArray(o.assignments)&&o.assignments.length?o.assignments.map(x=>x.technician):String(o.assigned||'').split(',');
+ return [...new Set(a.map(x=>String(x||'').trim()).filter(Boolean))];
+}
+function plannerReserve(booked,name,date,hours){
+ const key=name.toLowerCase()+'|'+date;
+ booked.set(key,(booked.get(key)||0)+hours);
+}
+function plannerAllocate(booked,names,hours,start){
+ let remaining=Math.max(0,hours),date=start,finish=start;
+ if(!remaining)return {date:null,error:'Introdu Estimated labor hours (mai mare decât 0).'};
+ if(!names.length)return {date:null,error:'Selectează cel puțin un tehnician în Assigned to.'};
+ if(names.some(n=>!plannerTech(n)))return {date:null,error:'Un tehnician selectat nu există în Settings → Technicians.'};
+ for(let i=0;i<730&&remaining>0.00001;i++,date=plannerNext(date)){
+  for(const name of names){
+   const cap=plannerDailyCapacity(name,date),key=name.toLowerCase()+'|'+date;
+   const free=Math.max(0,cap-(booked.get(key)||0));
+   const take=Math.min(free,remaining);
+   if(take>0){plannerReserve(booked,name,date,take);remaining-=take;finish=date;}
+  }
+ }
+ return remaining>0.00001?{date:null,error:'Capacitatea disponibilă nu permite programarea în următorii 2 ani.'}:{date:finish};
+}
+function calculateAutoTarget(current){
+ const booked=new Map(),start=today();
+ const names=plannerAssignments(current),hours=Number(current.estimatedHours)||0;
+ if(!hours)return {date:null,error:'Introdu Estimated labor hours (mai mare decât 0).'};
+ if(!names.length)return {date:null,error:'Selectează cel puțin un tehnician în Assigned to.'};
+ if(names.some(n=>!plannerTech(n)))return {date:null,error:'Un tehnician selectat nu există în Settings → Technicians.'};
+ // Never silently treat an open work order with no estimate as zero workload.
+ const existing=orders.filter(o=>!isClosed(o)&&o.id!==current.id);
+ const unknown=existing.filter(o=>plannerAssignments(o).some(n=>names.some(c=>c.toLowerCase()===n.toLowerCase()))&&!(Number(o.estimatedHours)>0));
+ if(unknown.length)return {date:null,error:'Nu pot calcula sigur: '+unknown.length+' Work Order(e) deschise pentru tehnicienii selectați nu au Estimated labor hours: '+unknown.slice(0,5).map(o=>o.id).join(', ')+(unknown.length>5?'…':'')+'. Completează orele estimate la aceste WO.'};
+ // Reserve preventive tasks first. Missing estimates for the same technician also block an exact result.
+ if(Array.isArray(pmPlans)){
+  const unknownPM=pmPlans.filter(p=>p.assigned&&names.some(n=>n.toLowerCase()===String(p.assigned).trim().toLowerCase())&&p.due&&!(Number(p.estimatedHours)>0));
+  if(unknownPM.length)return {date:null,error:'Există '+unknownPM.length+' plan(uri) preventive fără ore estimate pentru tehnicienii selectați.'};
+  for(const p of pmPlans.filter(p=>p.assigned&&Number(p.estimatedHours)>0&&p.due)){
+   plannerAllocate(booked,[p.assigned],Number(p.estimatedHours),p.due>start?p.due:start);
+  }
+ }
+ const rank=o=>Math.max(0,priorities.indexOf(o.priority));
+ // Book every already-open WO before the new request, so existing commitments are not ignored.
+ existing.sort((a,b)=>rank(a)-rank(b)||String(a.dateSubmitted||a.created||'').localeCompare(String(b.dateSubmitted||b.created||'')));
+ for(const o of existing){
+  const assigned=plannerAssignments(o),h=Number(o.estimatedHours)||0;
+  if(assigned.length&&h>0)plannerAllocate(booked,assigned,h,(o.dateStarted||o.dateSubmitted||start)>start?(o.dateStarted||o.dateSubmitted):start);
+ }
+ const result=plannerAllocate(booked,names,hours,(current.dateSubmitted||start)>start?current.dateSubmitted:start);
+ if(result.date){
+  const freeToday=names.reduce((sum,n)=>sum+Math.max(0,plannerDailyCapacity(n,start)-(booked.get(n.toLowerCase()+'|'+start)||0)),0);
+  result.info='Calculat pentru '+names.length+' tehnician(i), '+hours+' ore estimate; WO deschise și PM incluse. Maxim 8 ore/zi/tehnician, fără weekend. Orele fără estimare blochează calculul.';
+ }
+ return result;
+}
+function previewAutoTarget(force=false){
+ if(targetManual&&!force)return;
+ const el=$('targetDate'),note=$('targetExplanation');if(!el||!note)return;
+ const current={id:$('editId').value,dateSubmitted:$('requestDate').value,estimatedHours:$('estimatedHours').value,assignments:getAssignments()};
+ const result=calculateAutoTarget(current);el.value=result.date||'';targetManual=false;
+ note.textContent=result.date?result.info:result.error;
+ note.style.color=result.date?'#18845b':'#b9770e';
+}
+// Enforce the 8-hour/day scheduling ceiling even when Target Date is edited manually.
+// Existing open commitments are reserved first, then the candidate is checked against its deadline.
+function validateWorkOrderCapacity(candidate){
+ if(isClosed(candidate))return {ok:true};
+ const names=plannerAssignments(candidate),hours=Number(candidate.estimatedHours)||0;
+ if(!names.length)return {ok:false,message:'Selectează cel puțin un tehnician înainte de planificare.'};
+ if(!(hours>0))return {ok:false,message:'Introdu Estimated labor hours pentru verificarea capacității.'};
+ if(!candidate.targetDate)return {ok:false,message:'Selectează Target Date.'};
+ if(plannerDay(candidate.targetDate)<1||plannerDay(candidate.targetDate)>5)return {ok:false,message:'Target Date trebuie să fie luni–vineri.'};
+ const result=calculateAutoTarget(candidate);
+ if(result.error)return {ok:false,message:result.error};
+ if(result.date>candidate.targetDate)return {ok:false,message:'Capacitate depășită! Pentru '+hours+' ore și tehnicienii selectați, prima dată disponibilă este '+result.date+'. Target Date ales ('+candidate.targetDate+') este prea devreme. Modifică data sau repartizarea.'};
+ return {ok:true};
+}
 async function saveOrder(e){
-e.preventDefault();if(busy||!validAssignments()||!validateWoFiles())return;busy=true;let id=$('editId').value;let existing=orders.find(o=>o.id===id);let o={...(existing||{}),id:id||'FR-'+String(Date.now()).slice(-8),created:existing?.created||new Date().toISOString(),updated:new Date().toISOString()};
-[['requester','requester'],['department','department'],['requestDate','dateSubmitted'],['location','location'],['type','type'],['impact','impact'],['requestedPriority','requestedPriority'],['priority','priority'],['status','status'],['description','description'],['targetDate','targetDate'],['actualCost','actualCost'],['estimatedHours','estimatedHours'],['actualHours','actualHours'],['dateCompleted','dateCompleted'],['notes','notes']].forEach(([a,b])=>o[b]=$(a).value);o.assignments=getAssignments();o.assigned=o.assignments.map(a=>a.technician).join(', ');o.actualHours=String(o.assignments.reduce((sum,a)=>sum+a.hours,0));if (o.dateCompleted) {
+e.preventDefault();if(busy||!validAssignments()||!validateWoFiles())return;if(isAdmin){if(!targetManual)previewAutoTarget();if(!$('targetDate').value){alert('Target date nu poate fi calculat. '+$('targetExplanation').textContent);return;}}busy=true;let id=$('editId').value;let existing=orders.find(o=>o.id===id);let o={...(existing||{}),id:id||'FR-'+String(Date.now()).slice(-8),created:existing?.created||new Date().toISOString(),updated:new Date().toISOString()};
+[['requester','requester'],['department','department'],['requestDate','dateSubmitted'],['location','location'],['type','type'],['impact','impact'],['requestedPriority','requestedPriority'],['priority','priority'],['status','status'],['description','description'],['targetDate','targetDate'],['actualCost','actualCost'],['estimatedHours','estimatedHours'],['actualHours','actualHours'],['dateCompleted','dateCompleted'],['notes','notes'],['workShift','workShift']].forEach(([a,b])=>o[b]=$(a).value);o.assignments=getAssignments();o.assigned=o.assignments.map(a=>a.technician).join(', ');o.actualHours=String(o.assignments.reduce((sum,a)=>sum+a.hours,0));if (o.dateCompleted) {
   o.status = 'Closed';
 }
+if(isAdmin){const check=validateWorkOrderCapacity(o);if(!check.ok){alert(check.message);busy=false;return;}}
 if(!o.dateStarted&&o.status==='In Progress')o.dateStarted=today();if(!o.dateCompleted&&['Completed','Closed'].includes(o.status))o.dateCompleted=today();
 try{
  o.attachments=[...retainedAttachments];
@@ -480,8 +576,8 @@ if(document.body.classList.contains('first-order')){
 }
 toast(existing?'Work Order updated':'Work Order created: '+o.id);showDetail(o.id)}
 function editOrder(id){let o=orders.find(x=>x.id===id);if(!o)return;newOrder();$('formTitle').textContent='Edit Work Order · '+o.id;$('editId').value=o.id;
-const m={requester:'requester',department:'department',dateSubmitted:'requestDate',location:'location',type:'type',impact:'impact',requestedPriority:'requestedPriority',priority:'priority',status:'status',description:'description',targetDate:'targetDate',actualCost:'actualCost',estimatedHours:'estimatedHours',actualHours:'actualHours',dateCompleted:'dateCompleted',notes:'notes'};
-Object.entries(m).forEach(([k,v])=>$(v).value=o[k]??'');retainedAttachments=[...(o.attachments||[])];renderExistingAttachments();loadAssignments(o);showPage('new')}
+const m={requester:'requester',department:'department',dateSubmitted:'requestDate',location:'location',type:'type',impact:'impact',requestedPriority:'requestedPriority',priority:'priority',status:'status',description:'description',targetDate:'targetDate',actualCost:'actualCost',estimatedHours:'estimatedHours',actualHours:'actualHours',dateCompleted:'dateCompleted',notes:'notes',workShift:'workShift'};
+Object.entries(m).forEach(([k,v])=>$(v).value=o[k]??'');retainedAttachments=[...(o.attachments||[])];renderExistingAttachments();loadAssignments(o);targetManual=!!o.targetDate;showPage('new');updateTargetNote()}
 function isClosed(o){return ['Completed','Closed','Rejected'].includes(o.status)}
 function isOverdue(o){if(!o.targetDate)return false;if(o.dateCompleted)return o.dateCompleted>o.targetDate;if(isClosed(o))return false;return o.targetDate<today()}
 function priorityClass(p){return 'p'+(priorities.indexOf(p)+1||4)}
@@ -666,11 +762,11 @@ function monthlyCapacity(t,month){const d=monthData(t,month);return Math.max(0,(
 function calculateTechnicianCapacity(){const wd=Number($('technicianWorkingDays').value),vd=Number($('technicianVacationDays').value),dh=Number($('technicianDailyHours').value);$('technicianCapacity').value=wd>=0&&vd>=0&&vd<=wd&&dh>0?((wd-vd)*dh).toFixed(2):''}
 function loadTechnicianMonth(){const id=$('technicianId').value,month=selectedTechMonth();const t=technicians.find(x=>x.id===id);const d=t?monthData(t,month):{workingDays:countWeekdays(month),vacationDays:0,dailyHours:8};$('technicianWorkingDays').value=d.workingDays;$('technicianVacationDays').value=d.vacationDays;$('technicianDailyHours').value=d.dailyHours;calculateTechnicianCapacity()}
 async function saveTechnician(){
- const id=$('technicianId').value,firstName=$('technicianFirstName').value.trim(),lastName=$('technicianLastName').value.trim(),role=$('technicianRole').value.trim(),month=selectedTechMonth();
+ const id=$('technicianId').value,firstName=$('technicianFirstName').value.trim(),lastName=$('technicianLastName').value.trim(),role=$('technicianRole').value.trim(),shift=$('technicianShift').value,month=selectedTechMonth();
  const workingDays=Number($('technicianWorkingDays').value),vacationDays=Number($('technicianVacationDays').value),dailyHours=Number($('technicianDailyHours').value),capacity=(workingDays-vacationDays)*dailyHours;
  if(!firstName||!lastName||!month||!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!Number.isInteger(workingDays)||workingDays<0||workingDays>31||!Number.isInteger(vacationDays)||vacationDays<0||vacationDays>workingDays||!Number.isFinite(dailyHours)||dailyHours<=0||dailyHours>24||!Number.isInteger(dailyHours*4)){alert('Verifică zilele lucrătoare, concediul și orele pe zi. Concediul nu poate depăși zilele lucrătoare.');return;}
  const previous=technicians.find(t=>t.id===id);
- const technician={...(previous||{}),id:id||'TECH-'+Date.now(),firstName,lastName,role,capacity,months:{...(previous?.months||{}),[month]:{workingDays,vacationDays,dailyHours}}};
+ const technician={...(previous||{}),id:id||'TECH-'+Date.now(),firstName,lastName,role,shift,capacity,months:{...(previous?.months||{}),[month]:{workingDays,vacationDays,dailyHours}}};
  try{await cloudTech(technician)}catch(e){failCloud(e);await refreshCloud();return;}
  if(id)technicians=technicians.map(t=>t.id===id?technician:t);else technicians.push(technician);
  $('technicianForm').reset();$('technicianId').value='';$('technicianMonth').value=$('workloadMonth').value||new Date().toISOString().slice(0,7);loadTechnicianMonth();renderTechnicians();toast('Technician saved in Supabase. Monthly data synchronized.');
@@ -678,7 +774,7 @@ async function saveTechnician(){
 function editTechnician(id){
  const t=technicians.find(x=>x.id===id);if(!t)return;
  $('technicianId').value=t.id;$('technicianFirstName').value=t.firstName;$('technicianLastName').value=t.lastName;
- $('technicianRole').value=t.role||'';$('technicianMonth').value=$('workloadMonth').value||new Date().toISOString().slice(0,7);loadTechnicianMonth();window.scrollTo(0,0);
+ $('technicianRole').value=t.role||'';$('technicianShift').value=t.shift||'A';$('technicianMonth').value=$('workloadMonth').value||new Date().toISOString().slice(0,7);loadTechnicianMonth();window.scrollTo(0,0);
 }
 async function deleteTechnician(id){
   const t=technicians.find(x=>x.id===id);
@@ -696,11 +792,11 @@ function renderTechnicians(){
 
   $('technicianList').innerHTML=technicians.length
     ? `<div class="tablewrap"><table>
-        <thead><tr><th>Technician</th><th>Function</th><th>Working days</th><th>Vacation days</th><th>Monthly capacity · ${esc(month)}</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Technician</th><th>Function</th><th>Schimb</th><th>Working days</th><th>Vacation days</th><th>Monthly capacity · ${esc(month)}</th><th>Actions</th></tr></thead>
         <tbody>${technicians.map(t=>`
           <tr>
             <td>${esc(t.firstName)} ${esc(t.lastName)}</td>
-            <td>${esc(t.role||'—')}</td>
+            <td>${esc(t.role||'—')}</td><td>${esc(t.shift||'Nespecificat')}</td>
             <td>${monthData(t,month).workingDays}</td>
             <td>${monthData(t,month).vacationDays}</td>
             <td>${monthlyCapacity(t,month).toFixed(2)} hours</td>
@@ -772,9 +868,118 @@ function tableHTML(arr){if(!arr.length)return '';return `<div class="tablewrap">
   ${esc(o.dateCompleted || '—')}
 </td><td><button class="small" onclick="showDetail('${o.id}')">Open</button>
 <button class="small secondary" onclick="editOrder('${o.id}')">Edit</button></td></tr>`).join('')}</tbody></table></div>`}
+
+// Calendar compact: 5 working days, one row per technician; click a day for WO details.
+let woCalAnchor=new Date(),woCalMode='week',woCalSelected='',woCalShiftFilter='';
+function woCalDate(d){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
+function woCalMonday(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-(x.getDay()+6)%7);return x}
+function woCalISOWeek(d){
+ const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+ x.setUTCDate(x.getUTCDate()+4-(x.getUTCDay()||7));
+ const year=x.getUTCFullYear(),start=new Date(Date.UTC(year,0,1));
+ return {year,week:Math.ceil((((x-start)/86400000)+1)/7)};
+}
+function woCalWeeksInYear(year){return woCalISOWeek(new Date(year,11,28)).week}
+function woCalWeekStart(year,week){
+ const jan4=new Date(year,0,4,12);const monday=woCalMonday(jan4);
+ monday.setDate(monday.getDate()+(week-1)*7);return monday;
+}
+function woCalChooseWeek(){
+ const year=Number($('woCalWeekYear').value),week=Number($('woCalWeekNumber').value);
+ if(!Number.isInteger(year)||!Number.isInteger(week)||week<1||week>woCalWeeksInYear(year))return;
+ woCalAnchor=woCalWeekStart(year,week);woCalMode='week';woCalSelected='';renderWoCalendar();
+}
+function woCalWeekYearChanged(){
+ const year=Number($('woCalWeekYear').value),sel=$('woCalWeekNumber');
+ const old=Number(sel.value)||1;
+ sel.innerHTML=Array.from({length:woCalWeeksInYear(year)},(_,i)=>`<option value="${i+1}">${uiText('Săptămâna','Week')} ${String(i+1).padStart(2,'0')}</option>`).join('');
+ sel.value=String(Math.min(old,woCalWeeksInYear(year)));
+ woCalChooseWeek();
+}
+function woCalMove(n){woCalAnchor.setDate(woCalAnchor.getDate()+n*(woCalMode==='year'?365:woCalMode==='week'?7:1));woCalSelected='';renderWoCalendar()}
+function woCalSelectMonth(month){woCalAnchor=new Date(month+'-01T12:00:00');woCalMode='week';woCalSelected='';renderWoCalendar()}
+function woCalSelect(date){woCalSelected=date;woCalMode='day';woCalAnchor=new Date(date+'T12:00:00');renderWoCalendar()}
+function woCalAssignments(o,name){const assignments=Array.isArray(o.assignments)&&o.assignments.length?o.assignments:[{technician:o.assigned||'',hours:o.actualHours||0}];return assignments.filter(a=>String(a.technician||'').trim().toLowerCase()===name.toLowerCase())}
+
+// Daily allocations for the calendar. The same priority and capacity rules as the target planner.
+function woCalDailySchedule(){
+ const booked=new Map(), allocations=new Map(), start=today();
+ const reserve=(id,name,date,hours,kind)=>{
+  const key=id+'|'+name.toLowerCase()+'|'+date;
+  const entry=allocations.get(key)||{id,name,date,hours:0,kind};entry.hours+=hours;allocations.set(key,entry);
+ };
+ function allocate(id,names,hours,from,kind){
+  let left=Number(hours)||0,date=from>start?from:start;
+  if(!names.length||left<=0)return;
+  for(let i=0;i<730&&left>0.00001;i++,date=plannerNext(date)){
+   for(const name of names){
+    const key=name.toLowerCase()+'|'+date;
+    const free=Math.max(0,plannerDailyCapacity(name,date)-(booked.get(key)||0));
+    const take=Math.min(left,free);
+    if(take>0.00001){plannerReserve(booked,name,date,take);reserve(id,name,date,take,kind);left-=take;}
+   }
+  }
+ }
+ if(Array.isArray(pmPlans))for(const p of pmPlans){
+  if(p.assigned&&p.due&&Number(p.estimatedHours)>0)allocate('PM:'+p.id,[p.assigned],p.estimatedHours,p.due,'pm');
+ }
+ const rank=o=>Math.max(0,priorities.indexOf(o.priority));
+ const open=orders.filter(o=>!isClosed(o)).sort((a,b)=>rank(a)-rank(b)||String(a.dateSubmitted||a.created||'').localeCompare(String(b.dateSubmitted||b.created||'')));
+ for(const o of open)allocate(o.id,plannerAssignments(o),o.estimatedHours,o.dateStarted||o.dateSubmitted||start,'wo');
+ return [...allocations.values()];
+}
+let woCalScheduleCache=null;
+function woCalEntries(t,date){
+ const name=techName(t).toLowerCase();
+ const planned=(woCalScheduleCache||woCalDailySchedule()).filter(x=>x.name.toLowerCase()===name&&x.date===date&&x.kind==='wo').map(x=>({...x,order:orders.find(o=>o.id===x.id)}));
+ const completed=orders.filter(o=>o.dateCompleted===date&&woCalAssignments(o,techName(t)).length).map(o=>({id:o.id,name:techName(t),date,kind:'done',hours:woCalAssignments(o,techName(t)).reduce((n,a)=>n+(Number(a.hours)||0),0),order:o}));
+ return [...planned,...completed];
+}
+function woCalTechOrders(t,date){return [...new Set(woCalEntries(t,date).map(x=>x.order).filter(Boolean))]}
+function woCalCell(t,date){
+ const arr=woCalEntries(t,date),done=arr.filter(x=>x.kind==='done'),pending=arr.filter(x=>x.kind==='wo');
+ const late=pending.filter(x=>x.order&&isOverdue(x.order));
+ const actual=done.reduce((n,x)=>n+x.hours,0),planned=pending.reduce((n,x)=>n+x.hours,0);
+ const cls=late.length?'wo-late':pending.length?'wo-plan':done.length?'wo-done':'wo-blank';
+ const pct=Math.round((actual+planned)/8*100);
+ const detail=arr.map(x=>x.id+': '+x.hours.toFixed(2)+'h').join(' | ');
+ return `<button type="button" class="wo-cell ${cls}" style="width:100%;border:0" onclick="woCalSelect('${date}')" title="${esc(detail)}">${arr.length?`${pct}% <small style="display:block">${actual.toFixed(1)}h ${uiText('realizate','completed')} · ${planned.toFixed(1)}h ${uiText('planificate','planned')}</small>`:'—'}</button>`;
+}
+function renderWoCalendar(){
+ woCalScheduleCache=woCalDailySchedule();
+ const holder=$('woCalendar');if(!holder)return;
+ const monday=woCalMonday(woCalAnchor),days=Array.from({length:5},(_,i)=>{const d=new Date(monday);d.setDate(d.getDate()+i);return woCalDate(d)});
+ const date=woCalSelected||woCalDate(woCalAnchor);
+ const iso=woCalISOWeek(woCalAnchor);
+ const yearChoices=Array.from({length:11},(_,i)=>iso.year-5+i).map(y=>`<option value="${y}" ${y===iso.year?'selected':''}>${y}</option>`).join('');
+ const weekChoices=Array.from({length:woCalWeeksInYear(iso.year)},(_,i)=>`<option value="${i+1}" ${i+1===iso.week?'selected':''}>${uiText('Săptămâna','Week')} ${String(i+1).padStart(2,'0')}</option>`).join('');
+ const weekPicker=`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px">An săptămână <select id="woCalWeekYear" onchange="woCalWeekYearChanged()" style="width:auto">${yearChoices}</select></label><label style="display:inline-flex;align-items:center;gap:5px;font-size:12px">Nr. săptămână <select id="woCalWeekNumber" onchange="woCalChooseWeek()" style="width:auto">${weekChoices}</select></label>`;
+ const controls=`<div class="wo-cal-controls"><strong>Calendar Work Orders</strong><button class="small secondary" onclick="woCalMove(-1)">◀</button><button class="small secondary" onclick="woCalAnchor=new Date();woCalSelected='';renderWoCalendar()">Astăzi</button><button class="small secondary" onclick="woCalMove(1)">▶</button><select onchange="woCalMode=this.value;woCalSelected='';renderWoCalendar()"><option value="year" ${woCalMode==='year'?'selected':''}>An</option><option value="week" ${woCalMode==='week'?'selected':''}>Săptămână</option><option value="day" ${woCalMode==='day'?'selected':''}>Zi</option></select><select onchange="woCalShiftFilter=this.value;renderWoCalendar()"><option value="">Toate schimburile</option>${['A','B','C'].map(x=>`<option value="${x}" ${woCalShiftFilter===x?'selected':''}>Schimb ${x}</option>`).join('')}</select>${weekPicker}<span>${woCalMode==='year'?'Anul '+woCalAnchor.getFullYear():woCalMode==='week'?days[0]+' – '+days[4]:date}</span></div><div class="wo-cal-legend"><span class="wo-done">Verde: realizat</span><span class="wo-plan">Galben: planificat</span><span class="wo-late">Roșu: overdue</span></div>`;
+ const techs=technicians.filter(t=>!woCalShiftFilter||t.shift===woCalShiftFilter).sort((a,b)=>(a.shift||'Z').localeCompare(b.shift||'Z')||techName(a).localeCompare(techName(b),'ro'));
+ if(woCalMode==='year'){
+  const year=woCalAnchor.getFullYear(),months=Array.from({length:12},(_,i)=>year+'-'+String(i+1).padStart(2,'0'));
+  const annual=`<div class="wo-cal-wrap"><table class="wo-cal" style="min-width:1000px"><thead><tr><th class="wo-day">Tehnician / Schimb</th>${months.map(m=>`<th><button class="small secondary" onclick="woCalSelectMonth('${m}')">${new Date(m+'-01T12:00:00').toLocaleDateString('ro-RO',{month:'short'})}</button></th>`).join('')}</tr></thead><tbody>${techs.map(t=>`<tr><td class="wo-day"><b>${esc(techName(t))}</b><div class="subnote">Schimb ${esc(t.shift||'—')}</div></td>${months.map(m=>{
+   const slots=woCalScheduleCache.filter(x=>x.name.toLowerCase()===techName(t).toLowerCase()&&x.date.startsWith(m)&&x.kind==='wo');const related=orders.filter(o=>woCalAssignments(o,techName(t)).length&&o.dateCompleted?.startsWith(m)).concat([...new Set(slots.map(x=>x.id))].map(id=>orders.find(o=>o.id===id)).filter(Boolean));
+   const done=related.filter(o=>o.dateCompleted),late=related.filter(o=>!isClosed(o)&&isOverdue(o));
+   const hrs=slots.reduce((n,x)=>n+x.hours,0)+related.filter(o=>o.dateCompleted).reduce((n,o)=>n+woCalAssignments(o,techName(t)).reduce((a,x)=>a+(Number(x.hours)||0),0),0);
+   const cls=late.length?'wo-late':related.some(o=>!isClosed(o))?'wo-plan':done.length?'wo-done':'wo-blank';
+   return `<td><button type="button" class="wo-cell ${cls}" style="width:100%;border:0" onclick="woCalSelectMonth('${m}')">${related.length?related.length+' WO':'—'}<small style="display:block">${hrs.toFixed(1)}h</small></button></td>`;
+  }).join('')}</tr>`).join('')}</tbody></table></div>`;
+  holder.innerHTML=controls+annual+'<p class="subnote">Vizualizare anuală compactă, 12 luni pe coloane și câte un rând pentru fiecare tehnician. Apasă pe o lună pentru a deschide săptămâna. Orele planificate sunt distribuite pe zile lucrătoare, cu maximum 8 ore pe tehnician/zi; orele efective rămân în data închiderii.</p>';
+  return;
+ }
+ const visibleDays=woCalMode==='week'?days:[date];
+ const table=`<div class="wo-cal-wrap"><table class="wo-cal" style="width:100%;min-width:600px"><thead><tr><th class="wo-day">Tehnician / Schimb</th>${visibleDays.map(d=>`<th>${new Date(d+'T12:00:00').toLocaleDateString('ro-RO',{weekday:'short',day:'2-digit',month:'2-digit'})}</th>`).join('')}</tr></thead><tbody>${techs.map(t=>`<tr><td class="wo-day"><b>${esc(techName(t))}</b><div class="subnote">Schimb ${esc(t.shift||'nespecificat')} · max 8h/zi</div></td>${visibleDays.map(d=>`<td>${woCalCell(t,d)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+ let details='';if(woCalMode==='day'){
+ const list=techs.flatMap(t=>woCalEntries(t,date).filter(x=>x.order).map(x=>({t,o:x.order,h:x.hours,kind:x.kind})));
+ details=`<div class="panel" style="margin-top:12px"><h2>Work Orders · ${date}</h2>${list.length?`<div class="tablewrap"><table style="min-width:650px"><thead><tr><th>Tehnician</th><th>Schimb</th><th>WO</th><th>Status</th><th>Ore</th></tr></thead><tbody>${list.map(({t,o,h,kind})=>`<tr><td>${esc(techName(t))}</td><td>${esc(t.shift||'—')}</td><td><button class="small secondary" onclick="showDetail('${esc(o.id)}')">${esc(o.id)}</button></td><td>${esc(o.status)}</td><td>${esc(h.toFixed(2))}</td></tr>`).join('')}</tbody></table></div>`:'<p>Nu există lucrări atribuite pentru această zi.</p>'}</div>`;
+ }
+ holder.innerHTML=controls+table+details+`<p class="subnote">* Orele estimate sunt distribuite pe zile lucrătoare, în limita capacității disponibile, cu lucrările existente programate primele. Este o simulare locală, nu o rezervare centralizată. Verde = ore efective / 8h pentru tehnician. Lucrările fără tehnician, Target Date sau ore estimate nu pot fi planificate corect. Schimburile A/B/C sunt cele configurate în Settings.</p>`;
+}
+
 let workOrderCategory='open';
 function setWorkOrderCategory(category){
- workOrderCategory=category==='closed'?'closed':'open';
+ workOrderCategory=['closed','calendar'].includes(category)?category:'open';
  renderList();
 }
 function renderList(){
@@ -785,11 +990,15 @@ function renderList(){
  $('wo-closed-count').textContent=`(${closedTotal})`;
  $('wo-tab-open').classList.toggle('active',workOrderCategory==='open');
  $('wo-tab-closed').classList.toggle('active',workOrderCategory==='closed');
+ $('wo-tab-calendar').classList.toggle('active',workOrderCategory==='calendar');
+ $('woCalendar').classList.toggle('hidden',workOrderCategory!=='calendar');
+ $('listTable').classList.toggle('hidden',workOrderCategory==='calendar');
+ if(workOrderCategory==='calendar'){renderWoCalendar();$('listCount').textContent='Calendar Work Orders · zile / săptămâni / schimburi';return;}
  const a=filtered().filter(o=>workOrderCategory==='closed'?isClosed(o):!isClosed(o));
  $('listTable').innerHTML=tableHTML(a)||'<div class="empty">No work orders found in this category.</div>';
  $('listCount').textContent=`Showing ${a.length} of ${workOrderCategory==='closed'?closedTotal:openTotal} ${workOrderCategory==='closed'?'closed':'opened'} work orders`;
 }
-function showDetail(id){let o=orders.find(x=>x.id===id);if(!o)return;let rows=[['WO ID',o.id],['Status',o.status],['Submitted',o.dateSubmitted],['Requester',o.requester],['Department',o.department],['Location',o.location],['Request type',o.type],['Operational impact',o.impact],['Requested priority',o.requestedPriority],['Facility priority',o.priority],['Problem / request description',o.description],['Assigned to',o.assignments?.length?o.assignments.map(a=>`${a.technician} (${Number(a.hours)||0} h)`).join('\n'):o.assigned],['Target date',o.targetDate],['Date completed',o.dateCompleted],['Actual cost (RON)',o.actualCost],['Estimated labor hours',o.estimatedHours],['Actual labor hours',o.actualHours],['Facility notes / work performed',o.notes],['Days open / duration',age(o)+' days'],['Overdue',isOverdue(o)?'YES':'No']];const attachmentHTML=(o.attachments||[]).length?'<div class="field full"><label>Attached files</label>'+o.attachments.map(a=>`<button class="small secondary" style="margin:3px" onclick="openWoAttachment(${JSON.stringify(o.id).replace(/"/g,'&quot;')},${JSON.stringify(a.path).replace(/"/g,'&quot;')})">📎 ${esc(a.name)}</button>`).join('')+'</div>':'';$('detailPanel').innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:start"><div><h2 style="font-size:22px;margin-bottom:5px">${esc(o.id)} · Facility Work Order</h2><div>${pill(o.priority,priorityClass(o.priority))} ${pill(o.status,statusClass(o.status))} ${isOverdue(o)?pill('OVERDUE','p1'):''}</div></div><div class="actions no-print" style="margin:0"><button class="secondary" onclick="showPage('list')">Back to list</button><button onclick="editOrder('${o.id}')">Edit</button><button class="secondary" onclick="printDetail('${o.id}')">Print WO</button><button class="danger" onclick="deleteOrder('${o.id}')">Delete</button></div></div><hr style="border:0;border-top:1px solid #e3e8ef;margin:18px 0"><div class="formgrid">${rows.map(([k,v])=>`<div class="field ${['Problem / request description','Reason for priority / business impact','Facility notes / work performed'].includes(k)?'full':''}"><label>${esc(k)}</label><div style="white-space:pre-wrap;padding:4px 0">${esc(v||'—')}</div></div>`).join('')}${attachmentHTML}</div>`;showPage('detail')}
+function showDetail(id){let o=orders.find(x=>x.id===id);if(!o)return;let rows=[['WO ID',o.id],['Status',o.status],['Submitted',o.dateSubmitted],['Requester',o.requester],['Department',o.department],['Location',o.location],['Request type',o.type],['Operational impact',o.impact],['Requested priority',o.requestedPriority],['Facility priority',o.priority],['Problem / request description',o.description],['Assigned to',o.assignments?.length?o.assignments.map(a=>`${a.technician} (${Number(a.hours)||0} h)`).join('\n'):o.assigned],['Target date',o.targetDate],['Schimb',o.workShift?'Schimb '+o.workShift:'Nespecificat'],['Date completed',o.dateCompleted],['Actual cost (RON)',o.actualCost],['Estimated labor hours',o.estimatedHours],['Actual labor hours',o.actualHours],['Facility notes / work performed',o.notes],['Days open / duration',age(o)+' days'],['Overdue',isOverdue(o)?'YES':'No']];const attachmentHTML=(o.attachments||[]).length?'<div class="field full"><label>Attached files</label>'+o.attachments.map(a=>`<button class="small secondary" style="margin:3px" onclick="openWoAttachment(${JSON.stringify(o.id).replace(/"/g,'&quot;')},${JSON.stringify(a.path).replace(/"/g,'&quot;')})">📎 ${esc(a.name)}</button>`).join('')+'</div>':'';$('detailPanel').innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:start"><div><h2 style="font-size:22px;margin-bottom:5px">${esc(o.id)} · Facility Work Order</h2><div>${pill(o.priority,priorityClass(o.priority))} ${pill(o.status,statusClass(o.status))} ${isOverdue(o)?pill('OVERDUE','p1'):''}</div></div><div class="actions no-print" style="margin:0"><button class="secondary" onclick="showPage('list')">Back to list</button><button onclick="editOrder('${o.id}')">Edit</button><button class="secondary" onclick="printDetail('${o.id}')">Print WO</button><button class="danger" onclick="deleteOrder('${o.id}')">Delete</button></div></div><hr style="border:0;border-top:1px solid #e3e8ef;margin:18px 0"><div class="formgrid">${rows.map(([k,v])=>`<div class="field ${['Problem / request description','Reason for priority / business impact','Facility notes / work performed'].includes(k)?'full':''}"><label>${esc(k)}</label><div style="white-space:pre-wrap;padding:4px 0">${esc(v||'—')}</div></div>`).join('')}${attachmentHTML}</div>`;showPage('detail')}
 function printDetail(id){showDetail(id);setTimeout(()=>window.print(),100)}
 async function deleteOrder(id){if(!confirm('Delete work order '+id+'? This cannot be undone.'))return;try{await cloudDelete('facility_work_orders',[id]);orders=orders.filter(o=>o.id!==id)}catch(e){failCloud(e);return;}toast('Work order deleted');showPage('list')}
 async function deleteSelectedOrders() {
@@ -849,17 +1058,27 @@ accessForm.addEventListener('submit', async function(event){
  $('accessError').textContent='Se verifică parola în Supabase...';
  try{
   await adminRequest('verify',{},password);
-  adminPassword=password;
-  isAdmin=true;
+ }catch(e){
+  adminPassword='';isAdmin=false;
+  $('accessError').textContent='Acces refuzat: '+(e.message||e);
+  return;
+ }
+ // Autentificarea reușită nu trebuie anulată dacă încărcarea datelor eșuează.
+ adminPassword=password;
+ isAdmin=true;
+ accessGate.classList.add('hidden');
+ $('accessPassword').value='';
+ document.body.classList.remove('first-order','public-view');
+ $('accessError').textContent='';
+ showPage('dashboard');
+ try{
   await refreshCloud();
-  accessGate.classList.add('hidden');
-  $('accessPassword').value='';
-  document.body.classList.remove('first-order','public-view');
-  $('accessError').textContent='';
-  showPage('dashboard');
-  $('pushSettings').style.display='block';
-  updatePushStatus().catch(console.error);
- }catch(e){adminPassword='';isAdmin=false;$('accessError').textContent='Acces refuzat: '+(e.message||e);}
+ }catch(e){
+  console.error('Facility data refresh failed:',e);
+  alert('Autentificarea a reușit, dar datele nu au putut fi încărcate din Supabase: '+(e.message||e)+'\nRămâi în Overview. Reîncarcă pagina pentru a încerca din nou.');
+ }
+ $('pushSettings').style.display='block';
+ updatePushStatus().catch(console.error);
 });
 document.getElementById('togglePassword').addEventListener('click', function(){
   const input=document.getElementById('accessPassword');
@@ -909,7 +1128,7 @@ async function disableFacilityPush(){
 $('technicianMonth').value=new Date().toISOString().slice(0,7);loadTechnicianMonth();renderAssignmentOptions();
 // Independent Facility Preventive Maintenance module
 const PM_KEY='facility_preventive_plans_v1', PM_HISTORY_KEY='facility_preventive_history_v1';
-let pmPlans=[],pmHistory=[],pmMode='due';
+
 let pmPendingRows=[];
 let pmCalendarYear=new Date().getFullYear();
 let pmLoaded=false;
@@ -924,7 +1143,7 @@ async function pmCloud(action,payload={}){
  return data;
 }
 async function pmRefresh(){
- try{const data=await pmCloud('list');pmPlans=data.plans||[];pmHistory=data.history||[];pmLoaded=true;pmRender();renderTechnicians();}
+ try{const data=await pmCloud('list');pmPlans=data.plans||[];pmHistory=data.history||[];pmLoaded=true;pmRender();renderTechnicians();if($('page-new')&&!$('page-new').classList.contains('hidden'))previewAutoTarget();}
  catch(e){pmLoaded=false;$('pm-content').innerHTML='<div class="empty">Eroare Supabase: '+esc(e.message)+'</div>';alert('Preventive Maintenance: '+e.message);}
 }
 function pmToday(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
@@ -1135,6 +1354,66 @@ function pmCalendarRender(list){
 
 function pmRender(){if(!$('page-pm'))return;const t=pmToday(),start=pmWeekStart(),end=pmWeekEnd();const filter=$('pm-filter');const previous=filter.value;filter.innerHTML='<option value="">All areas</option>'+locations.map(l=>'<option value="'+esc(l)+'">'+esc(l)+'</option>').join('');filter.value=locations.includes(previous)?previous:'';const area=filter.value;const list=pmPlans.filter(p=>!area||p.area===area);const late=list.filter(p=>p.due<start&&!p.partial),week=list.filter(p=>p.due>=start&&p.due<=end&&!p.partial);$('pm-summary').innerHTML=metric('Defined plans',list.length,'Facilities only')+metric('Due this week',week.length,'Monday through Sunday')+metric('Overdue',late.length,'Before this week')+metric('Partially completed',list.reduce((n,p)=>n+(p.partialExecutions||[]).length+(p.partial?1:0),0),'Pending final closure')+metric('Executions',pmHistory.filter(h=>!area||h.area===area).length,'Saved history');['due','overdue','partial','plans','history','stats','calendar'].forEach(k=>$('pm-tab-'+k).classList.toggle('active',k===pmMode));let html='';if(pmMode==='partial'){const pending=list.flatMap(p=>[...(p.partialExecutions||[]),...(p.partial?[p.partial]:[])].map(e=>({p,e})));pmPendingRows=pending;html='<div class="tablewrap"><table><thead><tr><th>Area</th><th>Asset</th><th>Task</th><th>Scheduled</th><th>Performed by</th><th>Hours</th><th>Work performed</th><th>Action</th></tr></thead><tbody>'+pending.map(({p,e},i)=>'<tr><td>'+esc(p.area)+'</td><td>'+esc(p.asset)+'</td><td>'+esc(p.task)+'</td><td>'+esc(e.scheduled)+'</td><td>'+esc(e.performedBy)+'</td><td>'+esc(e.hours)+'</td><td>'+esc(e.notes||'')+'</td><td><button class="small" type="button" data-pm-reopen="'+i+'">Deschide / Închide definitiv</button></td></tr>').join('')+'</tbody></table></div>';if(!pending.length)html='<div class="empty">No partially completed work.</div>';}else if(['due','overdue','plans'].includes(pmMode)){const arr=(pmMode==='due'?week:pmMode==='overdue'?late:list).slice().sort((a,b)=>a.due.localeCompare(b.due));html='<div class="tablewrap"><table><thead><tr><th>Area</th><th>Asset</th><th>Task</th><th>Frequency</th><th>Assigned</th><th>Estimated hours</th><th>Next due</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+arr.map(p=>'<tr><td>'+esc(p.area)+'</td><td>'+esc(p.asset)+'</td><td><b>'+esc(p.task)+'</b><div class="subnote">'+esc(p.instructions)+'</div></td><td>'+esc(pmFreq[p.freq]||p.freq)+'</td><td>'+esc(p.assigned||'—')+'</td><td>'+esc(p.estimatedHours??'—')+'</td><td style="font-weight:700;color:'+(p.due<t?'#b42318':p.due===t?'#b9770e':'inherit')+'">'+esc(p.due)+'</td><td>'+esc(p.partial?'Partially Completed':p.due<t?'Overdue':p.due===t?'Due today':'Planned')+'</td><td><button class="small" onclick="pmComplete(\''+esc(p.id)+'\')">Complete / Partial</button> <button class="small secondary" onclick="pmNew(\''+esc(p.id)+'\')">Edit</button> <button class="small secondary" onclick="pmPrintPlan(\''+esc(p.id)+'\')">Print</button> <button class="small danger" onclick="pmDelete(\''+esc(p.id)+'\')">Delete</button></td></tr>').join('')+'</tbody></table></div>';if(!arr.length)html='<div class="empty">No preventive plans scheduled for this week. Check the Defined plans tab and the selected area filter.</div>'}else if(pmMode==='calendar'){html=pmCalendarRender(list)}else if(pmMode==='history'){const arr=pmHistory.filter(h=>!area||h.area===area).sort((a,b)=>b.completed.localeCompare(a.completed));html='<div class="actions"><button onclick="pmExport()">Export preventive CSV</button></div><div class="tablewrap"><table><thead><tr><th>Completed</th><th>Scheduled</th><th>Area</th><th>Asset</th><th>Task</th><th>Performed by</th><th>Hours</th><th>Notes</th><th>Action</th></tr></thead><tbody>'+arr.map(h=>'<tr><td>'+esc(h.completed)+'</td><td>'+esc(h.scheduled)+'</td><td>'+esc(h.area)+'</td><td>'+esc(h.asset)+'</td><td>'+esc(h.task)+'</td><td>'+esc(h.performedBy)+'</td><td>'+esc(h.hours)+'</td><td>'+esc(h.notes)+'</td><td><button class="small secondary" onclick="pmHistoryEdit(\''+esc(h.id)+'\')">Edit hours</button> <button class="small danger" onclick="pmHistoryDelete(\''+esc(h.id)+'\')">Delete</button></td></tr>').join('')+'</tbody></table></div>';if(!arr.length)html='<div class="empty">No completed preventive work yet.</div>'}else{const yr=new Date().getFullYear();const done=pmHistory.filter(h=>(!area||h.area===area)&&h.completed.startsWith(String(yr)));html='<h2>Annual preventive execution · '+yr+'</h2><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Month</th><th>Completed tasks</th><th>Labor hours</th></tr></thead><tbody>'+Array.from({length:12},(_,i)=>{const m=String(i+1).padStart(2,'0');const rows=done.filter(h=>h.completed.slice(5,7)===m);return '<tr><td>'+esc(new Date(yr,i,1).toLocaleString('en',{month:'long'}))+'</td><td>'+rows.length+'</td><td>'+rows.reduce((n,h)=>n+(Number(h.hours)||0),0).toFixed(2)+'</td></tr>'}).join('')+'</tbody></table></div>'}if(pmMode==='plans')html='<div class="actions" style="justify-content:flex-start"><button onclick="pmExport()">Export preventive CSV</button></div>'+html;$('pm-content').innerHTML=html}
 options('pm-area',locations,'Select area');options('pm-filter',locations,'All areas');
+
+
+// Bilingual interface; original user-entered text is never sent to an external translator.
+let appLanguage=localStorage.getItem('facility_ui_language')||'ro';
+function uiText(ro,en){return appLanguage==='ro'?ro:en}
+const uiDictionary={
+ 'Overview':'Prezentare generală','All Work Orders':'Toate comenzile de lucru','Opened':'Deschise','Closed':'Închise','Calendar':'Calendar',
+ 'Technicians & workload':'Tehnicieni și încărcare','Create Work Order':'Creează comandă de lucru',
+ 'Preventive Maintenance':'Mentenanță preventivă','Settings':'Setări','Export Excel':'Export Excel','Export CSV':'Export CSV',
+ 'Print':'Imprimă','Create Facility Work Order':'Creează Work Order pentru facilități',
+ 'Requester name *':'Nume solicitant *','Department':'Departament','Location *':'Locație *','Request type *':'Tip cerere *',
+ 'Operational impact':'Impact operațional','Requested priority *':'Prioritate solicitată *','Facility priority':'Prioritate facilități',
+ 'Status':'Stare','Problem / request description *':'Descrierea problemei / cererii *','Request date *':'Data cererii *',
+ 'Target date':'Data țintă','Target Date':'Data țintă','Date completed':'Data finalizării',
+ 'Actual cost (RON)':'Cost efectiv (RON)','Estimated labor hours':'Ore de lucru estimate','Actual labor hours':'Ore efective',
+ 'Facility notes / work performed':'Note facilități / lucrări efectuate','Save Work Order':'Salvează Work Order',
+ 'Cancel':'Anulează','Search ID, requester, description...':'Caută ID, solicitant, descriere...',
+ 'All statuses':'Toate stările','All priorities':'Toate prioritățile','All locations':'Toate locațiile',
+ 'All request types':'Toate tipurile','All requesters':'Toți solicitanții','All departments':'Toate departamentele',
+ 'First name *':'Prenume *','Last name *':'Nume *','Function / Position':'Funcție / Post',
+ 'Month *':'Lună *','Working days in month *':'Zile lucrătoare în lună *','Vacation days in month *':'Zile de concediu în lună *',
+ 'Hours per working day *':'Ore pe zi lucrătoare *','Monthly capacity (hours) *':'Capacitate lunară (ore) *',
+ 'Save technician':'Salvează tehnicianul','Monthly technician workload':'Încărcare lunară tehnicieni',
+ 'Assigned to 1':'Repartizat la 1','Assigned to 2':'Repartizat la 2','Assigned to 3':'Repartizat la 3',
+ 'Actual hours · Technician 1':'Ore efective · Tehnician 1','Actual hours · Technician 2':'Ore efective · Tehnician 2',
+ 'Actual hours · Technician 3':'Ore efective · Tehnician 3','New':'Nou','Approved':'Aprobat',
+ 'Rejected':'Respins','Wip':'În lucru','Today':'Astăzi','Week':'Săptămână','Year':'An','Day':'Zi',
+ 'Work Order Status Summary':'Situația comenzilor de lucru','Costs Overview (RON)':'Situația costurilor (RON)',
+ 'Work Orders by Priority':'Comenzi de lucru după prioritate','Requester':'Solicitant','Technician':'Tehnician',
+ 'Estimated hours':'Ore estimate','Actual hours':'Ore efective','Work performed':'Lucrare efectuată',
+ 'Edit':'Editează','Delete':'Șterge','Complete':'Finalizează','Planned':'Planificat','Overdue':'Întârziat',
+ 'Select technician':'Selectează tehnician','All areas':'Toate zonele','Due this week':'Scadente săptămâna aceasta',
+ 'History':'Istoric','Statistics':'Statistici','Defined plans':'Planuri definite','Actions':'Acțiuni',
+ 'Date':'Dată','Priority':'Prioritate','Hours':'Ore','Cost':'Cost','Notes':'Note',
+ 'Shift A':'Schimbul A','Shift B':'Schimbul B','Shift C':'Schimbul C'
+};
+const uiReverse=Object.fromEntries(Object.entries(uiDictionary).map(([en,ro])=>[ro,en]));
+let languageUpdating=false;
+function translateInterface(){
+ if(languageUpdating)return;languageUpdating=true;
+ try{
+  const root=document.querySelector('main');if(!root)return;
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);const nodes=[];
+  while(walker.nextNode())nodes.push(walker.currentNode);
+  for(const n of nodes){if(n.parentElement?.closest('script,style,textarea,option'))continue;
+   const raw=n.nodeValue,trim=raw.trim();if(!trim)continue;
+   const translated=appLanguage==='ro'?uiDictionary[trim]:uiReverse[trim];
+   if(translated)n.nodeValue=raw.replace(trim,translated);
+  }
+  for(const el of root.querySelectorAll('input[placeholder],textarea[placeholder]')){
+   const v=el.placeholder;el.placeholder=(appLanguage==='ro'?uiDictionary[v]:uiReverse[v])||v;
+  }
+ }finally{languageUpdating=false;}
+}
+function setAppLanguage(lang){appLanguage=lang==='en'?'en':'ro';localStorage.setItem('facility_ui_language',appLanguage);translateInterface();if(typeof renderWoCalendar==='function'&&document.getElementById('woCalendar')&&!document.getElementById('woCalendar').classList.contains('hidden'))renderWoCalendar();}
+window.addEventListener('DOMContentLoaded',()=>{
+ const select=document.getElementById('appLanguage');if(select)select.value=appLanguage;
+ translateInterface();
+ const main=document.querySelector('main');if(main){const observer=new MutationObserver(()=>translateInterface());observer.observe(main,{childList:true,subtree:true});}
+});
 
 renderDashboard();
 </script></body></html>
