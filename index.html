@@ -98,7 +98,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 .pm-legend i{width:15px;height:15px;display:inline-block;border-radius:3px}
 
 
-.wo-cal-wrap{max-height:72vh;overflow:auto;border:1px solid #dce3ec;border-radius:8px}.wo-cal{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:11px}.wo-cal th,.wo-cal td{border:1px solid #e4eaf1;padding:3px 5px;min-width:38px;text-align:center}.wo-cal thead th{position:sticky;top:0;background:#eaf0f8;z-index:2}.wo-cal .wo-day{position:sticky;left:0;min-width:180px;text-align:left;background:white;z-index:1}.wo-cal thead .wo-day{z-index:3;background:#eaf0f8}.wo-cal .wo-shift .wo-day{padding-left:25px;background:#f6f8fc}.wo-cal .wo-weekend .wo-day{background:#f1f3f6;color:#8792a1}.wo-cal .wo-cell{border-radius:5px;min-width:62px;padding:5px 3px;cursor:pointer;font-weight:700}.wo-cal .wo-done{background:#d9f3e3;color:#176c49}.wo-cal .wo-plan{background:#fff0b3;color:#825700}.wo-cal .wo-late{background:#fbdcda;color:#a52820}.wo-cal .wo-mixed{background:linear-gradient(110deg,#d9f3e3 33%,#fff0b3 33% 66%,#fbdcda 66%);color:#243b53}.wo-cal .wo-plus{padding:2px 7px;margin-right:6px}.wo-cal .wo-blank{background:#fafbfd}.wo-cal .wo-muted{color:#a2aab6}.wo-cal-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}.wo-cal-controls select{width:115px}.wo-cal-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin:10px 0}.wo-cal-legend span{padding:4px 8px;border-radius:5px}
+.wo-cal-wrap{max-height:72vh;overflow:auto;border:1px solid #dce3ec;border-radius:8px}.wo-cal{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:11px}.wo-cal th,.wo-cal td{border:1px solid #e4eaf1;padding:3px 5px;min-width:38px;text-align:center}.wo-cal thead th{position:sticky;top:0;background:#eaf0f8;z-index:2}.wo-cal .wo-day{position:sticky;left:0;min-width:180px;text-align:left;background:white;z-index:1}.wo-cal thead .wo-day{z-index:3;background:#eaf0f8}.wo-cal .wo-shift .wo-day{padding-left:25px;background:#f6f8fc}.wo-cal .wo-weekend .wo-day{background:#f1f3f6;color:#8792a1}.wo-cal .wo-cell{border-radius:5px;min-width:62px;padding:5px 3px;cursor:pointer;font-weight:700}.wo-cal .wo-started{background:#d9e5fa;color:#214a84}.wo-cal .wo-done{background:#d9f3e3;color:#176c49}.wo-cal .wo-plan{background:#fff0b3;color:#825700}.wo-cal .wo-late{background:#fbdcda;color:#a52820}.wo-cal .wo-mixed{background:linear-gradient(110deg,#d9f3e3 33%,#fff0b3 33% 66%,#fbdcda 66%);color:#243b53}.wo-cal .wo-plus{padding:2px 7px;margin-right:6px}.wo-cal .wo-blank{background:#fafbfd}.wo-cal .wo-muted{color:#a2aab6}.wo-cal-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}.wo-cal-controls select{width:115px}.wo-cal-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin:10px 0}.wo-cal-legend span{padding:4px 8px;border-radius:5px}
 </style></head>
 <body>
 <a class="portal-back" href="https://alexecalin.github.io/" aria-label="Înapoi la meniul principal">&#8592; Meniu principal</a>
@@ -268,6 +268,7 @@ body.first-order #page-new .requester-note{margin-bottom:0}
 </div>
 <div class="formgrid" id="facilityAdminFields">
 <div class="field"><label>Target date · calculat automat</label><input id="targetDate" type="date" oninput="targetManual=true;updateTargetNote();autoWipOnTarget()"><div id="targetExplanation" class="subnote">Selectează tehnicianul și completează Estimated labor hours.</div><button type="button" class="small secondary" onclick="targetManual=false;previewAutoTarget(true)">↻ Recalculează automat</button></div>
+<div class="field"><label>Date Started · editabil</label><input id="dateStarted" type="date"><div class="subnote">Se completează automat când WO trece în Wip; poți introduce o dată anterioară.</div></div>
 <div class="field"><label>Schimbul lucrării</label><select id="workShift"><option value="">Nespecificat</option><option value="A">Schimb A</option><option value="B">Schimb B</option><option value="C">Schimb C</option></select></div><div class="field"><label>Date completed</label><input id="dateCompleted" type="date"></div>
 <div class="field"><label>Assigned to 1</label><select id="assigned1" onchange="updateAssignmentHours();previewAutoTarget()"></select></div>
 <div class="field"><label>Actual hours · Technician 1</label><input id="assignedHours1" type="number" min="0" step="0.25" value="0" oninput="updateAssignmentHours()"></div>
@@ -649,15 +650,35 @@ function validateWorkOrderCapacity(candidate){
  if(result.date>candidate.targetDate)return {ok:false,message:'Capacitate depășită! Pentru '+hours+' ore și tehnicienii selectați, prima dată disponibilă este '+result.date+'. Target Date ales ('+candidate.targetDate+') este prea devreme. Modifică data sau repartizarea.'};
  return {ok:true};
 }
+// A saved per-day plan is immutable during ordinary edits and page refreshes.
+// It is rebuilt only on initial Wip scheduling or a manually changed Target Date.
+function woPersistedPlan(order, previous){
+ const existing=Array.isArray(previous?.plannedDays)?previous.plannedDays:[];
+ const changedTarget=!!previous&&order.targetDate!==previous.targetDate;
+ if(order.status!=='Wip')return existing;
+ if(existing.length&&!changedTarget)return existing;
+ const booked=new Map(),entries=[];
+ // Respect reservations already saved for OTHER WOs, including historical days.
+ for(const other of orders){if(other.id===order.id)continue;
+  for(const e of Array.isArray(other.plannedDays)?other.plannedDays:[]){
+   if(e.date&&e.name&&Number(e.hours)>0)plannerReserve(booked,e.name,e.date,Number(e.hours));
+  }
+ }
+ const start=order.dateStarted||today();
+ const result=replanAllocate(booked,order,start,entries);
+ if(result.error)throw Error('Planificarea nu poate fi salvată: '+result.error);
+ return entries.map(({date,name,hours})=>({date,name,hours:Number(hours.toFixed(3))}));
+}
 async function saveOrder(e){
-e.preventDefault();if(busy||!validAssignments()||!validateWoFiles())return;if(isAdmin){if(!targetManual)previewAutoTarget();if(!$('targetDate').value){alert('Target date nu poate fi calculat. '+$('targetExplanation').textContent);return;}}busy=true;let id=$('editId').value;let existing=orders.find(o=>o.id===id);let o={...(existing||{}),id:id||'FR-'+String(Date.now()).slice(-8),created:existing?.created||new Date().toISOString(),updated:new Date().toISOString()};
-[['requester','requester'],['department','department'],['requestDate','dateSubmitted'],['location','location'],['type','type'],['impact','impact'],['requestedPriority','requestedPriority'],['priority','priority'],['status','status'],['description','description'],['targetDate','targetDate'],['actualCost','actualCost'],['estimatedHours','estimatedHours'],['actualHours','actualHours'],['dateCompleted','dateCompleted'],['notes','notes'],['workShift','workShift']].forEach(([a,b])=>o[b]=$(a).value);o.assignments=getAssignments();o.assigned=o.assignments.map(a=>a.technician).join(', ');o.actualHours=String(o.assignments.reduce((sum,a)=>sum+a.hours,0));if (o.dateCompleted) {
+e.preventDefault();if(busy||!validAssignments()||!validateWoFiles())return;if(isAdmin){if(!targetManual&&!existing)previewAutoTarget();if(!$('targetDate').value){alert('Target date nu poate fi calculat. '+$('targetExplanation').textContent);return;}}busy=true;let id=$('editId').value;let existing=orders.find(o=>o.id===id);let o={...(existing||{}),id:id||'FR-'+String(Date.now()).slice(-8),created:existing?.created||new Date().toISOString(),updated:new Date().toISOString()};
+[['requester','requester'],['department','department'],['requestDate','dateSubmitted'],['location','location'],['type','type'],['impact','impact'],['requestedPriority','requestedPriority'],['priority','priority'],['status','status'],['description','description'],['targetDate','targetDate'],['actualCost','actualCost'],['estimatedHours','estimatedHours'],['actualHours','actualHours'],['dateCompleted','dateCompleted'],['dateStarted','dateStarted'],['notes','notes'],['workShift','workShift']].forEach(([a,b])=>o[b]=$(a).value);o.assignments=getAssignments();o.assigned=o.assignments.map(a=>a.technician).join(', ');o.actualHours=String(o.assignments.reduce((sum,a)=>sum+a.hours,0));if (o.dateCompleted) {
   o.status = 'Closed';
 } else if(isAdmin&&o.targetDate&&!['Closed','Rejected'].includes(o.status)&&!['Closed','Rejected'].includes(existing?.status)){
   o.status='Wip';
 }
+if(o.status==='Wip'&&!o.dateStarted)o.dateStarted=today();
 let replanning=null;
-if(isAdmin&&!isClosed(o)){
+if(isAdmin&&!isClosed(o)&&targetManual&&(!existing||o.targetDate!==existing.targetDate)){
  const check=validateWorkOrderCapacity(o);
  if(!check.ok){
   if(!targetManual){alert(check.message);busy=false;return;}
@@ -667,8 +688,13 @@ if(isAdmin&&!isClosed(o)){
   o=replanning.candidate;
  }
 }
-if(!o.dateStarted&&o.status==='In Progress')o.dateStarted=today();if(!o.dateCompleted&&['Completed','Closed'].includes(o.status))o.dateCompleted=today();
+if(!o.dateStarted&&o.status==='Wip')o.dateStarted=today();if(!o.dateCompleted&&['Completed','Closed'].includes(o.status))o.dateCompleted=today();
 try{
+ if(isAdmin){
+  const planNeedsUpdate=o.status==='Wip'&&(!Array.isArray(existing?.plannedDays)||!existing.plannedDays.length||o.targetDate!==existing.targetDate);
+  if(planNeedsUpdate)o.plannedDays=woPersistedPlan(o,existing);
+  else if(existing?.plannedDays)o.plannedDays=existing.plannedDays;
+ }
  o.attachments=[...retainedAttachments];
  o.newAttachments=await encodeWoFiles();
  if(!isAdmin){
@@ -695,7 +721,7 @@ if(document.body.classList.contains('first-order')){
 }
 toast(existing?'Work Order updated':'Work Order created: '+o.id);showDetail(o.id)}
 function editOrder(id){let o=orders.find(x=>x.id===id);if(!o)return;newOrder();$('formTitle').textContent='Edit Work Order · '+o.id;$('editId').value=o.id;
-const m={requester:'requester',department:'department',dateSubmitted:'requestDate',location:'location',type:'type',impact:'impact',requestedPriority:'requestedPriority',priority:'priority',status:'status',description:'description',targetDate:'targetDate',actualCost:'actualCost',estimatedHours:'estimatedHours',actualHours:'actualHours',dateCompleted:'dateCompleted',notes:'notes',workShift:'workShift'};
+const m={requester:'requester',department:'department',dateSubmitted:'requestDate',location:'location',type:'type',impact:'impact',requestedPriority:'requestedPriority',priority:'priority',status:'status',description:'description',targetDate:'targetDate',actualCost:'actualCost',estimatedHours:'estimatedHours',actualHours:'actualHours',dateCompleted:'dateCompleted',dateStarted:'dateStarted',notes:'notes',workShift:'workShift'};
 Object.entries(m).forEach(([k,v])=>$(v).value=o[k]??'');retainedAttachments=[...(o.attachments||[])];renderExistingAttachments();loadAssignments(o);targetManual=!!o.targetDate;showPage('new');updateTargetNote()}
 function isClosed(o){return ['Completed','Closed','Rejected'].includes(o.status)}
 function isOverdue(o){if(!o.targetDate)return false;if(o.dateCompleted)return o.dateCompleted>o.targetDate;if(isClosed(o))return false;return o.targetDate<today()}
@@ -1074,19 +1100,22 @@ async function woCalApplyEarlierTargets(){
  }
 }
 function woCalDailySchedule(){
- const booked=new Map(),entries=[],start=today();
- for(const p of pmPlans||[]){if(p.assigned&&p.due&&Number(p.estimatedHours)>0){
-  const pseudo={id:'PM:'+p.id,assignments:[{technician:p.assigned,hours:Number(p.estimatedHours)}]};
-  replanAllocate(booked,pseudo,p.due>start?p.due:start,entries);
- }}
- // Fill the earliest available working days; a Target Date is a deadline,
- // not a reason to leave preceding days idle. Priority is respected.
+ const entries=[],booked=new Map();
+ // Saved plans are the source of truth. Closed WOs retain their planned history.
+ for(const o of orders){
+  for(const x of Array.isArray(o.plannedDays)?o.plannedDays:[]){
+   if(!x.date||!x.name||!(Number(x.hours)>0))continue;
+   entries.push({id:o.id,name:x.name,date:x.date,hours:Number(x.hours),kind:'wo'});
+   plannerReserve(booked,x.name,x.date,Number(x.hours));
+  }
+ }
+ // Legacy Wip orders have no persisted schedule: show a deterministic provisional
+ // plan from Date Started, without moving it forward on every refresh.
  const rank=o=>{const n=priorities.indexOf(o.priority);return n<0?99:n;};
- const open=orders.filter(o=>!isClosed(o)).sort((a,b)=>rank(a)-rank(b)||String(a.dateSubmitted||'').localeCompare(String(b.dateSubmitted||''))||String(a.id).localeCompare(String(b.id)));
- for(const o of open){
-  const earliest=o.dateStarted||o.dateSubmitted||start;
-  const begin=earliest>start?earliest:start;
-  replanAllocate(booked,o,begin,entries);
+ const legacy=orders.filter(o=>o.status==='Wip'&&!(Array.isArray(o.plannedDays)&&o.plannedDays.length))
+  .sort((a,b)=>rank(a)-rank(b)||String(a.dateStarted||a.dateSubmitted||'').localeCompare(String(b.dateStarted||b.dateSubmitted||'')));
+ for(const o of legacy){
+  replanAllocate(booked,o,o.dateStarted||o.dateSubmitted||today(),entries);
  }
  return entries;
 }
@@ -1094,18 +1123,22 @@ let woCalScheduleCache=null;
 function woCalEntries(t,date){
  const name=techName(t).toLowerCase();
  const planned=(woCalScheduleCache||woCalDailySchedule()).filter(x=>x.name.toLowerCase()===name&&x.date===date&&x.kind==='wo').map(x=>({...x,order:orders.find(o=>o.id===x.id)}));
- const completed=orders.filter(o=>o.dateCompleted===date&&woCalAssignments(o,techName(t)).length).map(o=>({id:o.id,name:techName(t),date,kind:'done',hours:woCalAssignments(o,techName(t)).reduce((n,a)=>n+(Number(a.hours)||0),0),order:o}));
+ const completed=orders.filter(o=>!(Array.isArray(o.plannedDays)&&o.plannedDays.length)&&o.dateCompleted===date&&woCalAssignments(o,techName(t)).length).map(o=>({id:o.id,name:techName(t),date,kind:'done',hours:woCalAssignments(o,techName(t)).reduce((n,a)=>n+(Number(a.hours)||0),0),order:o}));
  return [...planned,...completed];
 }
 function woCalTechOrders(t,date){return [...new Set(woCalEntries(t,date).map(x=>x.order).filter(Boolean))]}
 function woCalCell(t,date){
  const arr=woCalEntries(t,date),done=arr.filter(x=>x.kind==='done'),pending=arr.filter(x=>x.kind==='wo');
- const late=pending.filter(x=>x.order&&isOverdue(x.order));
  const actual=done.reduce((n,x)=>n+x.hours,0),planned=pending.reduce((n,x)=>n+x.hours,0);
- const cls=late.length?'wo-late':pending.length?'wo-plan':done.length?'wo-done':'wo-blank';
+ const overdue=pending.some(x=>x.order&&x.order.status==='Wip'&&x.order.targetDate&&date>x.order.targetDate&&date<=today());
+ const isToday=date===today();
+ const begun=pending.some(x=>x.order&&x.order.dateStarted&&x.order.dateStarted<date);
+ const cls=overdue?'wo-late':pending.length?(isToday?'wo-plan':date<today()?'wo-started':'wo-plan'):done.length?'wo-done':'wo-blank';
  const pct=Math.round((actual+planned)/8*100);
+ const ids=[...new Set(arr.map(x=>x.id))];
  const detail=arr.map(x=>x.id+': '+x.hours.toFixed(2)+'h').join(' | ');
- return `<button type="button" class="wo-cell ${cls}" style="width:100%;border:0" onclick="woCalSelectTechnician('${date}', '${esc(techName(t)).replace(/'/g, '&#39;')}')" title="${esc(detail)}">${arr.length?`${pct}% <small style="display:block">${actual.toFixed(1)}h ${uiText('realizate','completed')} · ${planned.toFixed(1)}h ${uiText('planificate','planned')}</small>`:'—'}</button>`;
+ const name=esc(techName(t)).replace(/'/g,'&#39;');
+ return `<button type="button" class="wo-cell ${cls}" style="width:100%;border:0" onclick="woCalSelectTechnician('${date}', '${name}')" title="${esc(detail)}">${arr.length?`${pct}% <small style="display:block">${actual.toFixed(1)}h ${uiText('realizate','completed')} · ${planned.toFixed(1)}h ${uiText('planificate','planned')}</small><small style="display:block;white-space:normal;overflow-wrap:anywhere">${ids.length} WO: ${ids.map(esc).join(', ')}</small>`:'—'}</button>`;
 }
 function renderWoCalendar(){
  woCalScheduleCache=woCalDailySchedule();
@@ -1116,7 +1149,7 @@ function renderWoCalendar(){
  const yearChoices=Array.from({length:11},(_,i)=>iso.year-5+i).map(y=>`<option value="${y}" ${y===iso.year?'selected':''}>${y}</option>`).join('');
  const weekChoices=Array.from({length:woCalWeeksInYear(iso.year)},(_,i)=>`<option value="${i+1}" ${i+1===iso.week?'selected':''}>${uiText('Săptămâna','Week')} ${String(i+1).padStart(2,'0')}</option>`).join('');
  const weekPicker=`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px">An săptămână <select id="woCalWeekYear" onchange="woCalWeekYearChanged()" style="width:auto">${yearChoices}</select></label><label style="display:inline-flex;align-items:center;gap:5px;font-size:12px">Nr. săptămână <select id="woCalWeekNumber" onchange="woCalChooseWeek()" style="width:auto">${weekChoices}</select></label>`;
- const controls=`<div class="wo-cal-controls"><strong>Calendar Work Orders</strong><button class="small secondary" onclick="woCalMove(-1)">◀</button><button class="small secondary" onclick="woCalAnchor=new Date();woCalSelected='';renderWoCalendar()">Astăzi</button><button class="small secondary" onclick="woCalMove(1)">▶</button><select onchange="woCalMode=this.value;woCalSelected='';renderWoCalendar()"><option value="year" ${woCalMode==='year'?'selected':''}>An</option><option value="week" ${woCalMode==='week'?'selected':''}>Săptămână</option><option value="day" ${woCalMode==='day'?'selected':''}>Zi</option></select><select onchange="woCalShiftFilter=this.value;renderWoCalendar()"><option value="">Toate schimburile</option>${['A','B','C'].map(x=>`<option value="${x}" ${woCalShiftFilter===x?'selected':''}>Schimb ${x}</option>`).join('')}</select>${weekPicker}<button type="button" class="small secondary" onclick="woCalApplyEarlierTargets()">↶ Aplică date mai devreme</button><span>${woCalMode==='year'?'Anul '+woCalAnchor.getFullYear():woCalMode==='week'?days[0]+' – '+days[4]:date}</span></div><div class="wo-cal-legend"><span class="wo-done">Verde: realizat</span><span class="wo-plan">Galben: planificat</span><span class="wo-late">Roșu: overdue</span></div>`;
+ const controls=`<div class="wo-cal-controls"><strong>Calendar Work Orders</strong><button class="small secondary" onclick="woCalMove(-1)">◀</button><button class="small secondary" onclick="woCalAnchor=new Date();woCalSelected='';renderWoCalendar()">Astăzi</button><button class="small secondary" onclick="woCalMove(1)">▶</button><select onchange="woCalMode=this.value;woCalSelected='';renderWoCalendar()"><option value="year" ${woCalMode==='year'?'selected':''}>An</option><option value="week" ${woCalMode==='week'?'selected':''}>Săptămână</option><option value="day" ${woCalMode==='day'?'selected':''}>Zi</option></select><select onchange="woCalShiftFilter=this.value;renderWoCalendar()"><option value="">Toate schimburile</option>${['A','B','C'].map(x=>`<option value="${x}" ${woCalShiftFilter===x?'selected':''}>Schimb ${x}</option>`).join('')}</select>${weekPicker}<span>${woCalMode==='year'?'Anul '+woCalAnchor.getFullYear():woCalMode==='week'?days[0]+' – '+days[4]:date}</span></div><div class="wo-cal-legend"><span class="wo-done">Verde: realizat</span><span class="wo-started">Albastru: lucrare începută</span><span class="wo-plan">Galben: ziua curentă / planificat</span><span class="wo-late">Roșu: overdue</span></div>`;
  const techs=technicians.filter(t=>!woCalShiftFilter||t.shift===woCalShiftFilter).sort((a,b)=>(a.shift||'Z').localeCompare(b.shift||'Z')||techName(a).localeCompare(techName(b),'ro'));
  if(woCalMode==='year'){
   const year=woCalAnchor.getFullYear(),months=Array.from({length:12},(_,i)=>year+'-'+String(i+1).padStart(2,'0'));
@@ -1136,7 +1169,7 @@ function renderWoCalendar(){
  const list=techs.flatMap(t=>woCalEntries(t,date).filter(x=>x.order).map(x=>({t,o:x.order,h:x.hours,kind:x.kind})));
  details=`<div class="panel" style="margin-top:12px"><h2>Work Orders · ${date}</h2>${list.length?`<div class="tablewrap"><table style="min-width:650px"><thead><tr><th>Tehnician</th><th>Schimb</th><th>WO</th><th>Status</th><th>Ore</th></tr></thead><tbody>${list.map(({t,o,h,kind})=>`<tr><td>${esc(techName(t))}</td><td>${esc(t.shift||'—')}</td><td><button class="small secondary" onclick="showDetail('${esc(o.id)}')">${esc(o.id)}</button></td><td>${esc(o.status)}</td><td>${esc(h.toFixed(2))}</td></tr>`).join('')}</tbody></table></div>`:'<p>Nu există lucrări atribuite pentru această zi.</p>'}</div>`;
  }
- holder.innerHTML=controls+table+woCalTechnicianDetail()+details+`<p class="subnote">* Orele sunt compactate în primele intervale disponibile pentru o încărcare cât mai apropiată de 100%, cu respectarea priorităților și a limitei zilnice. Este o simulare locală, nu o rezervare centralizată. Verde = ore efective / 8h pentru tehnician. Lucrările fără tehnician, Target Date sau ore estimate nu pot fi planificate corect. Schimburile A/B/C sunt cele configurate în Settings.</p>`;
+ holder.innerHTML=controls+table+woCalTechnicianDetail()+details+`<p class="subnote">* Orele sunt compactate în primele intervale disponibile pentru o încărcare cât mai apropiată de 100%, cu respectarea priorităților și a limitei zilnice. Planificările noi sunt salvate în WO; lucrările vechi fără plannedDays au o planificare provizorie. Verde = ore efective / 8h pentru tehnician. Lucrările fără tehnician, Target Date sau ore estimate nu pot fi planificate corect. Schimburile A/B/C sunt cele configurate în Settings.</p>`;
 }
 
 let workOrderCategory='open';
