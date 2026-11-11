@@ -481,6 +481,37 @@ function plannerAssignments(o){
  const a=Array.isArray(o.assignments)&&o.assignments.length?o.assignments.map(x=>x.technician):String(o.assigned||'').split(',');
  return [...new Set(a.map(x=>String(x||'').trim()).filter(Boolean))];
 }
+// Orele deja raportate au prioritate fata de orice noua rezervare.
+// In lipsa unui pontaj zilnic WO, orele unui WO vechi inchis sunt asociate
+// datei inchiderii; nu le redistribuim fictiv in trecut.
+function plannerActualEntries(){
+ const result=[];
+ for(const h of pmHistory||[]){
+  const date=String(h.completed||''),name=String(h.performedBy||h.assigned||'').trim(),hours=Number(h.hours)||0;
+  if(name&&/^\d{4}-\d{2}-\d{2}$/.test(date)&&hours>0)result.push({name,date,hours});
+ }
+ for(const p of pmPlans||[]){
+  for(const e of [...(Array.isArray(p.partialExecutions)?p.partialExecutions:[]),...(p.partial?[p.partial]:[])]){
+   const date=String(e.completed||e.scheduled||''),name=String(e.performedBy||p.assigned||'').trim(),hours=Number(e.hours)||0;
+   if(name&&/^\d{4}-\d{2}-\d{2}$/.test(date)&&hours>0)result.push({name,date,hours});
+  }
+ }
+ for(const o of orders){
+  if(!isClosed(o)||!o.dateCompleted||Array.isArray(o.plannedDays)&&o.plannedDays.length)continue;
+  for(const a of Array.isArray(o.assignments)?o.assignments:[]){
+   const name=String(a.technician||'').trim(),hours=Number(a.hours)||0;
+   if(name&&hours>0)result.push({name,date:o.dateCompleted,hours});
+  }
+ }
+ return result;
+}
+function plannerReserveActual(booked){
+ for(const e of plannerActualEntries())plannerReserve(booked,e.name,e.date,e.hours);
+}
+function plannerSharedShiftError(names){
+ const shifts=[...new Set(names.map(n=>String(plannerTech(n)?.shift||'').trim()).filter(Boolean))];
+ return shifts.length>1?'Tehnicienii unei lucrari comune sunt in schimburi diferite ('+shifts.join(', ')+'). Nu pot fi programati simultan fara intervale orare de schimb definite.':null;
+}
 function plannerReserve(booked,name,date,hours){
  const key=name.toLowerCase()+'|'+date;
  booked.set(key,(booked.get(key)||0)+hours);
@@ -489,26 +520,19 @@ function plannerReserve(booked,name,date,hours){
 // a shared pool. Pack partial days before opening another working day.
 function plannerAllocate(booked,names,hours,start){
  const unique=[...new Set(names.map(n=>String(n||'').trim()).filter(Boolean))];
- if(!(Number(hours)>0))return {date:null,error:'Introdu Estimated labor hours (mai mare decât 0).'};
- if(!unique.length)return {date:null,error:'Selectează cel puțin un tehnician în Assigned to.'};
- if(unique.some(n=>!plannerTech(n)))return {date:null,error:'Un tehnician selectat nu există în Settings → Technicians.'};
- const remaining=new Map(unique.map(n=>[n.toLowerCase(),Number(hours)]));
- let date=start,finish=start;
- for(let i=0;i<730&&[...remaining.values()].some(h=>h>0.00001);i++,date=plannerNext(date)){
-  // A shared WO is allowed on this date only when every still-needed
-  // technician has positive available capacity.
-  const pending=unique.filter(n=>remaining.get(n.toLowerCase())>0.00001);
-  if(!pending.every(n=>plannerDailyCapacity(n,date)>0))continue;
-  const free=pending.map(n=>Math.max(0,plannerDailyCapacity(n,date)-(booked.get(n.toLowerCase()+'|'+date)||0)));
-  if(free.some(h=>h<=0.00001))continue;
-  for(let j=0;j<pending.length;j++){
-   const n=pending[j],key=n.toLowerCase(),take=Math.min(free[j],remaining.get(key));
-   if(take>0.00001){plannerReserve(booked,n,date,take);remaining.set(key,remaining.get(key)-take);finish=date;}
-  }
+ if(!(Number(hours)>0))return {date:null,error:'Introdu Estimated labor hours.'};
+ if(!unique.length)return {date:null,error:'Selecteaza un tehnician.'};
+ if(unique.some(n=>!plannerTech(n)))return {date:null,error:'Tehnician inexistent in Settings.'};
+ const shiftError=plannerSharedShiftError(unique);if(shiftError)return {date:null,error:shiftError};
+ let remaining=Number(hours),finish=start;
+ for(let date=start,i=0;i<730&&remaining>0.00001;i++,date=plannerNext(date)){
+  const free=unique.map(n=>Math.max(0,plannerDailyCapacity(n,date)-(booked.get(n.toLowerCase()+'|'+date)||0)));
+  const common=Math.min(remaining,...free);
+  if(common<=0.00001)continue;
+  for(const n of unique)plannerReserve(booked,n,date,common);
+  remaining-=common;finish=date;
  }
- return [...remaining.values()].some(h=>h>0.00001)
-  ?{date:null,error:'Capacitatea disponibilă nu permite programarea în următorii 2 ani.'}
-  :{date:finish};
+ return remaining>0.00001?{date:null,error:'Capacitate insuficienta in urmatorii 2 ani.'}:{date:finish};
 }
 
 // PM capacity reservations used by target calculation, manual replanning and saved WO schedules.
@@ -524,6 +548,7 @@ function reservePreventiveForPlanner(booked,fromDate){
 }
 function calculateAutoTarget(current){
  const booked=new Map(),start=today();
+ plannerReserveActual(booked);
  const names=plannerAssignments(current),hours=Number(current.estimatedHours)||0;
  if(!hours)return {date:null,error:'Introdu Estimated labor hours (mai mare decât 0).'};
  if(!names.length)return {date:null,error:'Selectează cel puțin un tehnician în Assigned to.'};
@@ -575,26 +600,32 @@ function replanStart(o){
  return o.targetDate?replanBackDate(o.targetDate,Math.max(1,Math.ceil(h/8))):(o.dateStarted||o.dateSubmitted||today());
 }
 function replanAllocate(booked,o,from,entries){
- const assignments=replanHours(o),remaining=new Map(assignments.map(x=>[x.name.toLowerCase(),x.hours]));
- if(!remaining.size)return {finish:o.targetDate||from};
- if(assignments.some(x=>!plannerTech(x.name)))return {error:'Tehnician inexistent în Settings pentru WO '+o.id};
- let date=from,finish=from;
- for(let i=0;i<730&&[...remaining.values()].some(x=>x>0.00001);i++,date=plannerNext(date)){
-  // A shared WO begins on a day when all assigned technicians have capacity.
-  const unfinished=assignments.filter(x=>remaining.get(x.name.toLowerCase())>0.00001);
-  if(!unfinished.every(x=>plannerDailyCapacity(x.name,date)-(booked.get(x.name.toLowerCase()+'|'+date)||0)>0.00001))continue;
-  for(const a of unfinished){
-   const key=a.name.toLowerCase()+'|'+date;
-   const free=Math.max(0,plannerDailyCapacity(a.name,date)-(booked.get(key)||0));
-   const take=Math.min(free,remaining.get(a.name.toLowerCase()));
-   if(take>0.00001){plannerReserve(booked,a.name,date,take);remaining.set(a.name.toLowerCase(),remaining.get(a.name.toLowerCase())-take);entries.push({id:o.id,name:a.name,date,hours:take,kind:'wo'});finish=date;}
+ const assignments=replanHours(o);
+ if(!assignments.length)return {finish:o.targetDate||from};
+ if(assignments.some(x=>!plannerTech(x.name)))return {error:'Tehnician inexistent pentru WO '+o.id};
+ const shiftError=plannerSharedShiftError(assignments.map(x=>x.name));
+ if(shiftError)return {error:'WO '+o.id+': '+shiftError};
+ const remaining=new Map(assignments.map(x=>[x.name.toLowerCase(),x.hours]));
+ let finish=from;
+ for(let date=from,i=0;i<730&&[...remaining.values()].some(h=>h>0.00001);i++,date=plannerNext(date)){
+  // Toti tehnicienii repartizati lucreaza simultan; durata zilnica este comuna.
+  // Un tehnician care si-a terminat partea ramane liber pentru alte lucrari.
+  const pending=assignments.filter(a=>remaining.get(a.name.toLowerCase())>0.00001);
+  const free=pending.map(a=>Math.max(0,plannerDailyCapacity(a.name,date)-(booked.get(a.name.toLowerCase()+'|'+date)||0)));
+  const common=Math.min(...free,...pending.map(a=>remaining.get(a.name.toLowerCase())));
+  if(!(common>0.00001))continue;
+  for(const a of pending){
+   plannerReserve(booked,a.name,date,common);
+   remaining.set(a.name.toLowerCase(),remaining.get(a.name.toLowerCase())-common);
+   entries.push({id:o.id,name:a.name,date,hours:common,kind:'wo'});
   }
+  finish=date;
  }
- if([...remaining.values()].some(x=>x>0.00001))return {error:'Nu există capacitate suficientă pentru '+o.id+' în următorii doi ani.'};
- return {finish};
+ return [...remaining.values()].some(h=>h>0.00001)?{error:'Capacitate insuficienta pentru '+o.id}:{finish};
 }
 function replanScenario(candidate){
  const start=today(),booked=new Map(),entries=[];
+ plannerReserveActual(booked);
  const requested=candidate.targetDate;
  const candidateAssignments=replanHours(candidate);
  if(!candidateAssignments.length)return {error:'Completează orele planificate pentru tehnicienii WO-ului nou.'};
@@ -671,6 +702,7 @@ function woPersistedPlan(order, previous){
  if(order.status!=='Wip')return existing;
  if(existing.length&&!changedTarget)return existing;
  const booked=new Map(),entries=[];
+ plannerReserveActual(booked);
  // Respect reservations already saved for OTHER WOs, including historical days.
  for(const other of orders){if(other.id===order.id)continue;
   for(const e of Array.isArray(other.plannedDays)?other.plannedDays:[]){
@@ -1146,6 +1178,7 @@ function woCalPreventiveEntries(){
 }
 function woCalDailySchedule(){
  const entries=[],booked=new Map();
+ plannerReserveActual(booked);
  // Saved plans are the source of truth. Closed WOs retain their planned history.
  for(const o of orders){
   for(const x of Array.isArray(o.plannedDays)?o.plannedDays:[]){
@@ -1155,7 +1188,7 @@ function woCalDailySchedule(){
    if(o.dateStarted&&x.date<o.dateStarted)continue;
    const kind=isClosed(o)?'history':'wo';
    entries.push({id:o.id,name:x.name,date:x.date,hours:Number(x.hours),kind});
-   if(kind==='wo')plannerReserve(booked,x.name,x.date,Number(x.hours));
+   plannerReserve(booked,x.name,x.date,Number(x.hours));
   }
  }
  // Preventive reservations are counted when allocating legacy WIP work.
@@ -1189,10 +1222,11 @@ function woCalCell(t,date){
  const begun=pending.some(x=>x.order&&x.order.dateStarted&&x.order.dateStarted<date);
  const cls=overdue?'wo-late':pending.length?(isToday?'wo-plan':date<today()?'wo-started':'wo-plan'):history.length?'wo-done':done.length?'wo-done':'wo-blank';
  const pct=Math.round((actual+planned+historical)/8*100);
+ const overload=pct>100?' ⚠ Depasire istorica / conflict existent':'';
  const ids=[...new Set(arr.map(x=>x.id))];
  const detail=arr.map(x=>x.id+': '+x.hours.toFixed(2)+'h').join(' | ');
  const name=esc(techName(t)).replace(/'/g,'&#39;');
- return `<button type="button" class="wo-cell ${cls}" style="width:100%;border:0" onclick="woCalSelectTechnician('${date}', '${name}')" title="${esc(detail)}">${arr.length?`${pct}% <small style="display:block">${actual.toFixed(1)}h ${uiText('realizate','completed')} · ${planned.toFixed(1)}h ${uiText('planificate','planned')}${historical?' · '+historical.toFixed(1)+'h istoric planificat':''}</small><small style="display:block;white-space:normal;overflow-wrap:anywhere">${ids.length} lucrări: ${ids.map(id=>esc(id)+(arr.some(x=>x.id===id&&x.pm)?' (PM)':'')).join(', ')}</small>`:'—'}</button>`;
+ return `<button type="button" class="wo-cell ${cls}" style="width:100%;border:0" onclick="woCalSelectTechnician('${date}', '${name}')" title="${esc(detail)}">${arr.length?`${pct}%${overload} <small style="display:block">${actual.toFixed(1)}h ${uiText('realizate','completed')} · ${planned.toFixed(1)}h ${uiText('planificate','planned')}${historical?' · '+historical.toFixed(1)+'h istoric planificat':''}</small><small style="display:block;white-space:normal;overflow-wrap:anywhere">${ids.length} lucrări: ${ids.map(id=>esc(id)+(arr.some(x=>x.id===id&&x.pm)?' (PM)':'')).join(', ')}</small>`:'—'}</button>`;
 }
 function renderWoCalendar(){
  woCalScheduleCache=woCalDailySchedule();
