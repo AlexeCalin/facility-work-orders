@@ -1242,10 +1242,25 @@ async function woCalRebalanceFuture(options={}){
   if(canonical(next)!==canonical(o.plannedDays)||result.targetDate!==o.targetDate)proposals.push({order:o,next,finish:result.finish,targetDate:result.targetDate||o.targetDate});
  }
  if(errors.length){alert('NU S-A SALVAT NIMIC. Unele lucrări nu pot fi planificate (verifică tehnicienii, schimburile sau capacitatea):\n\n'+errors.slice(0,25).join('\n')+'\n\nTarget Date este prelungit automat când există capacitate disponibilă.');return false;}
- // Verify actual+PM+WO daily occupancy; historical actual over 8h cannot be corrected by moving planned hours.
+ // Historical reported hours are immutable. A technician may already have
+ // more than 8 hours recorded today; that is a historical fact, not a new
+ // scheduling error. Reject ONLY new planned allocations that push a day
+ // beyond 8 hours. ReplanAllocate already subtracts recorded hours from
+ // capacity, so it never adds WO hours to an over-capacity day.
  const overload=[];
- for(const [key,h] of booked)if(key.slice(-10)>=cutoff&&h>8.00001)overload.push(key+': '+h.toFixed(2)+'h');
- if(overload.length){alert('NU S-A SALVAT NIMIC. Există zile cu peste 8 ore (inclusiv ore realizate/PM):\n'+overload.slice(0,25).join('\n'));return;}
+ const plannedFuture=new Map();
+ for(const p of proposals)for(const e of p.next.filter(x=>x.date>=cutoff)){
+  if(e.date<cutoff)continue;
+  const key=String(e.name).toLowerCase()+'|'+e.date;
+  plannedFuture.set(key,(plannedFuture.get(key)||0)+Number(e.hours||0));
+ }
+ for(const [key,h] of booked){
+  if(key.slice(-10)<cutoff||h<=8.00001)continue;
+  // Only warn when a newly scheduled WO contributes to the overage.
+  // Pure actual/PM history is retained without blocking all WO updates.
+  if((plannedFuture.get(key)||0)>0.00001)overload.push(key+': '+h.toFixed(2)+'h');
+ }
+ if(overload.length){alert('NU S-A SALVAT NIMIC. Planificarea NOUĂ depășește 8 ore/zi:\n'+overload.slice(0,25).join('\n'));return false;}
  if(!proposals.length){if(autoClose)return {proposals:[]};alert('Nu sunt modificări de planificare de astăzi înainte.');return;}
  const preview=proposals.slice(0,25).map(p=>p.order.id+' → '+p.finish+' (Target '+p.order.targetDate+' → '+p.targetDate+')').join('\n');
  if(autoClose)return {proposals,preview};
