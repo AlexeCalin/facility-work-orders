@@ -603,7 +603,7 @@ function replanStart(o){
  // Date Started este prima zi permisa; Target Date este doar termen-limita.
  return o.dateStarted||o.scheduleStart||o.dateSubmitted||today();
 }
-function replanAllocate(booked,o,from,entries){
+function replanAllocate(booked,o,from,entries,autoExtend=false){
  const assignments=replanHours(o);
  if(!assignments.length)return {finish:o.targetDate||from};
  if(assignments.some(x=>!plannerTech(x.name)))return {error:'Tehnician inexistent pentru WO '+o.id};
@@ -612,9 +612,9 @@ function replanAllocate(booked,o,from,entries){
  const remaining=new Map(assignments.map(x=>[x.name.toLowerCase(),x.hours]));
  const staged=[];
  const deadline=o.targetDate||"9999-12-31";
- if(from>deadline)return {error:`${o.id}: Date Started (${from}) este după Target Date (${deadline}).`};
+ if(from>deadline&&!autoExtend)return {error:`${o.id}: Date Started (${from}) este după Target Date (${deadline}).`};
  let finish=from;
- for(let date=from,i=0;i<730&&date<=deadline&&[...remaining.values()].some(h=>h>0.00001);i++,date=plannerNext(date)){
+ for(let date=from,i=0;i<730&&(autoExtend||date<=deadline)&&[...remaining.values()].some(h=>h>0.00001);i++,date=plannerNext(date)){
   // Toti tehnicienii repartizati lucreaza simultan; durata zilnica este comuna.
   // Un tehnician care si-a terminat partea ramane liber pentru alte lucrari.
   const pending=assignments.filter(a=>remaining.get(a.name.toLowerCase())>0.00001);
@@ -629,7 +629,7 @@ function replanAllocate(booked,o,from,entries){
  }
  if([...remaining.values()].some(h=>h>0.00001))return {error:`${o.id}: capacitate insuficientă până la Target Date ${deadline}. Mai sunt ${Math.max(...remaining.values()).toFixed(2)} ore/tehnician neplanificate. Modifică Target Date, orele sau tehnicienii.`};
  for(const e of staged){plannerReserve(booked,e.name,e.date,e.hours);entries.push(e);}
- return {finish};
+ return {finish,targetDate:autoExtend&&finish>deadline?finish:deadline};
 }
 // Manual Target Date: prioritize the selected WO, then cascade only through
 // technician-sharing dependencies. Preserve completed work and unrelated plans.
@@ -677,12 +677,12 @@ function replanScenario(candidate){
  for(const o of jobs){
   if(!plannerAssignments(o).length||!(Number(o.estimatedHours)>0))return {error:'WO '+o.id+' nu are tehnicieni sau Estimated labor hours.'};
   const old=Array.isArray(o.plannedDays)?o.plannedDays:[];
-  const slots=[];const res=replanAllocate(booked,o,replanStart(o),slots);
+  const slots=[];const res=replanAllocate(booked,o,replanStart(o),slots,true);
   if(res.error)return {error:res.error};
   const next=slots.map(e=>({date:e.date,name:e.name,hours:Number(e.hours.toFixed(3))}));
   const normalized=a=>JSON.stringify(a.map(e=>[e.date,String(e.name).toLowerCase(),Number(e.hours)]).sort((x,y)=>JSON.stringify(x).localeCompare(JSON.stringify(y))));
-  if(normalized(old)!==normalized(next)){
-   changes.push({before:o,after:{...o,plannedDays:next,updated:new Date().toISOString()},old:o.targetDate||'—',next:res.finish,oldSlots:old.length,newSlots:next.length});
+  if(normalized(old)!==normalized(next)||(res.targetDate&&res.targetDate!==o.targetDate)){
+   changes.push({before:o,after:{...o,targetDate:res.targetDate||o.targetDate,plannedDays:next,updated:new Date().toISOString()},old:o.targetDate||'—',next:res.finish,oldSlots:old.length,newSlots:next.length});
   }
  }
  const overload=[...booked].filter(([key,h])=>h>8.00001);
@@ -707,8 +707,8 @@ function woConfirmLatePlans(violations,context){
 }
 function replanConfirmText(s){
  return 'WO CRITIC – TARGET DATE MANUAL\n\n'+s.candidate.id+' se planifică prioritar până la '+s.candidate.targetDate+'.\n'+
- 'Se recalculează '+s.changes.length+' WO-uri conectate prin tehnicieni (Target Date al celorlalte WO-uri rămâne neschimbat).\n\n'+
- s.changes.slice(0,25).map(c=>c.before.id+': '+c.oldSlots+' intervale → '+c.newSlots+' intervale; ultima zi '+c.next+(c.before.targetDate&&c.next>c.before.targetDate?' ⚠ după termen':'')).join('\n')+
+ 'Se recalculează '+s.changes.length+' WO-uri conectate prin tehnicieni; Target Date se prelungește automat unde este necesar.\n\n'+
+ s.changes.slice(0,25).map(c=>c.before.id+': '+c.oldSlots+' intervale → '+c.newSlots+' intervale; ultima zi '+c.next+'; Target '+c.after.targetDate+(c.before.targetDate&&c.next>c.before.targetDate?' ⚠ după termen':'')).join('\n')+
  (s.changes.length>25?'\n... și alte '+(s.changes.length-25):'')+'\n\nConfirmi salvarea?';
 }
 
@@ -787,7 +787,7 @@ if(isAdmin&&existing&&!isClosed(existing)&&isClosed(o)&&o.status==='Closed'){
   if(closeRebalance===false){busy=false;return;}
   const count=closeRebalance.proposals.length;
   const preview=count?'\n\n'+closeRebalance.preview+(count>25?'\n...':''):'';
-  if(!confirm('ÎNCHIDERE WO '+o.id+'\n\nOrele viitoare devin libere. Se vor replanifica de astăzi înainte '+count+' alte WO-uri, maximum 8h/zi și fără depășirea Target Date.'+preview+'\n\nConfirmi închiderea și replanificarea?')){busy=false;return;}
+  if(!confirm('ÎNCHIDERE WO '+o.id+'\n\nOrele viitoare devin libere. Se vor replanifica de astăzi înainte '+count+' alte WO-uri, maximum 8h/zi; Target Date se prelungește automat unde este necesar.'+preview+'\n\nConfirmi închiderea și replanificarea?')){busy=false;return;}
  }catch(err){alert('Nu se poate verifica replanificarea: '+(err.message||err));busy=false;return;}
 }
 let replanning=null;
@@ -822,13 +822,13 @@ try{
  if(isAdmin&&closeRebalance&&closeRebalance.proposals.length){
   const failures=[];
   for(const p of closeRebalance.proposals){
-   try{await adminRequest('upsertOrder',{order:{...p.order,plannedDays:p.next,updated:new Date().toISOString()},newAttachments:[]});}
+   try{await adminRequest('upsertOrder',{order:{...p.order,targetDate:p.targetDate,plannedDays:p.next,updated:new Date().toISOString()},newAttachments:[]});}
    catch(err){failures.push(p.order.id+': '+(err.message||err));}
   }
   if(failures.length)alert('WO închis, dar replanificarea a fost salvată parțial. Verifică în Calendar:\n'+failures.join('\n'));
  }
  if(isAdmin&&replanning){
-  // Save only affected schedules. Their Target Dates remain unchanged.
+  // Save affected schedules and automatically extended Target Dates.
   const failures=[];
   for(const change of replanning.changes){
    try{await cloudOrder(change.after)}catch(err){failures.push(change.before.id+': '+(err.message||err));}
@@ -1234,26 +1234,26 @@ async function woCalRebalanceFuture(options={}){
    errors.push(o.id+': lipsesc Target Date, tehnicienii sau Estimated labor hours');continue;
   }
   const entries=[];
-  const result=replanAllocate(booked,o,replanStart(o)>cutoff?replanStart(o):cutoff,entries);
+  const result=replanAllocate(booked,o,replanStart(o)>cutoff?replanStart(o):cutoff,entries,true);
   if(result.error){errors.push(result.error);continue;}
   const past=(Array.isArray(o.plannedDays)?o.plannedDays:[]).filter(e=>e&&e.date&&e.date<cutoff);
   const next=[...past,...entries.map(e=>({date:e.date,name:e.name,hours:Number(e.hours.toFixed(3))}))];
   const canonical=a=>JSON.stringify((a||[]).map(e=>[e.date,String(e.name).toLowerCase(),Number(e.hours)]).sort((x,y)=>JSON.stringify(x).localeCompare(JSON.stringify(y))));
-  if(canonical(next)!==canonical(o.plannedDays))proposals.push({order:o,next,finish:result.finish});
+  if(canonical(next)!==canonical(o.plannedDays)||result.targetDate!==o.targetDate)proposals.push({order:o,next,finish:result.finish,targetDate:result.targetDate||o.targetDate});
  }
- if(errors.length){alert('NU S-A SALVAT NIMIC. Planificarea completă nu încape în termenele existente:\n\n'+errors.slice(0,25).join('\n')+'\n\nModifică termenele sau capacitatea. Nu voi programa ore după Target Date.');return false;}
+ if(errors.length){alert('NU S-A SALVAT NIMIC. Unele lucrări nu pot fi planificate (verifică tehnicienii, schimburile sau capacitatea):\n\n'+errors.slice(0,25).join('\n')+'\n\nTarget Date este prelungit automat când există capacitate disponibilă.');return false;}
  // Verify actual+PM+WO daily occupancy; historical actual over 8h cannot be corrected by moving planned hours.
  const overload=[];
  for(const [key,h] of booked)if(key.slice(-10)>=cutoff&&h>8.00001)overload.push(key+': '+h.toFixed(2)+'h');
  if(overload.length){alert('NU S-A SALVAT NIMIC. Există zile cu peste 8 ore (inclusiv ore realizate/PM):\n'+overload.slice(0,25).join('\n'));return;}
  if(!proposals.length){if(autoClose)return {proposals:[]};alert('Nu sunt modificări de planificare de astăzi înainte.');return;}
- const preview=proposals.slice(0,25).map(p=>p.order.id+' → '+p.finish+' (Target '+p.order.targetDate+')').join('\n');
+ const preview=proposals.slice(0,25).map(p=>p.order.id+' → '+p.finish+' (Target '+p.order.targetDate+' → '+p.targetDate+')').join('\n');
  if(autoClose)return {proposals,preview};
- if(!confirm('REPLANIFICARE DE AZI ÎNAINTE — MAXIMUM 8 ORE/ZI, NICIUN WO DUPĂ TARGET DATE\n\n'+proposals.length+' WO-uri se modifică.\n'+preview+(proposals.length>25?'\n...':'')+'\n\nConfirmi salvarea?'))return;
+ if(!confirm('REPLANIFICARE DE AZI ÎNAINTE — MAXIMUM 8 ORE/ZI, TARGET DATE PRELUNGIT AUTOMAT\n\n'+proposals.length+' WO-uri se modifică.\n'+preview+(proposals.length>25?'\n...':'')+'\n\nConfirmi salvarea?'))return;
  let saved=0;
  try{
-  for(const p of proposals){await adminRequest('upsertOrder',{order:{...p.order,plannedDays:p.next,updated:new Date().toISOString()},newAttachments:[]});saved++;}
-  await refreshCloud();renderWoCalendar();alert('Replanificate '+saved+' WO-uri, fără depășirea Target Date.');
+  for(const p of proposals){await adminRequest('upsertOrder',{order:{...p.order,targetDate:p.targetDate,plannedDays:p.next,updated:new Date().toISOString()},newAttachments:[]});saved++;}
+  await refreshCloud();renderWoCalendar();alert('Replanificate '+saved+' WO-uri. Target Date a fost prelungit automat unde a fost necesar.');
  }catch(e){await refreshCloud().catch(()=>{});renderWoCalendar();alert('ATENȚIE: salvare parțială ('+saved+'/'+proposals.length+'). '+(e.message||e));}
 }
 async function woCalApplyEarlierTargets(){
