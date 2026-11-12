@@ -822,7 +822,7 @@ try{
  if(isAdmin&&closeRebalance&&closeRebalance.proposals.length){
   const failures=[];
   for(const p of closeRebalance.proposals){
-   try{await adminRequest('upsertOrder',{order:{...p.order,targetDate:p.targetDate,plannedDays:p.next,updated:new Date().toISOString()},newAttachments:[]});}
+   try{await adminRequest('upsertOrder',{order:{...p.order,targetDate:p.targetDate,dateStarted:p.dateStarted,plannedDays:p.next,updated:new Date().toISOString()},newAttachments:[]});}
    catch(err){failures.push(p.order.id+': '+(err.message||err));}
   }
   if(failures.length)alert('WO închis, dar replanificarea a fost salvată parțial. Verifică în Calendar:\n'+failures.join('\n'));
@@ -1229,17 +1229,57 @@ async function woCalRebalanceFuture(options={}){
   String(a.targetDate||'9999-12-31').localeCompare(String(b.targetDate||'9999-12-31'))||
   priorities.indexOf(a.priority)-priorities.indexOf(b.priority)||
   replanStart(a).localeCompare(replanStart(b)));
- for(const o of active){
-  if(!o.targetDate||!plannerAssignments(o).length||!(Number(o.estimatedHours)>0)){
-   errors.push(o.id+': lipsesc Target Date, tehnicienii sau Estimated labor hours');continue;
+ // Evaluate alternative WO orders. Allow planned Date Started to move earlier
+ // to fill gaps toward 5.2h without changing PM or historical completed work.
+ const baseBooked=new Map(booked);
+ const strategies=[
+  active,
+  [...active].sort((a,b)=>replanStart(a).localeCompare(replanStart(b))||String(a.targetDate).localeCompare(String(b.targetDate))),
+  [...active].sort((a,b)=>replanStart(a).localeCompare(replanStart(b))||(Number(a.estimatedHours)||0)-(Number(b.estimatedHours)||0)),
+  [...active].sort((a,b)=>replanStart(a).localeCompare(replanStart(b))||(Number(b.estimatedHours)||0)-(Number(a.estimatedHours)||0))
+ ];
+ const makePlan=(sequence)=>{
+  const b=new Map(baseBooked),changes=[],issues=[];
+  for(const o of sequence){
+   if(!o.targetDate||!plannerAssignments(o).length||!(Number(o.estimatedHours)>0)){
+    issues.push(o.id+': lipsesc Target Date, tehnicienii sau Estimated labor hours');continue;
+   }
+   const entries=[];
+   const result=replanAllocate(b,o,cutoff,entries,true);
+   if(result.error){issues.push(result.error);continue;}
+   const past=(Array.isArray(o.plannedDays)?o.plannedDays:[]).filter(e=>e&&e.date&&e.date<cutoff);
+   const next=[...past,...entries.map(e=>({date:e.date,name:e.name,hours:Number(e.hours.toFixed(3))}))];
+   const canonical=a=>JSON.stringify((a||[]).map(e=>[e.date,String(e.name).toLowerCase(),Number(e.hours)]).sort((x,y)=>JSON.stringify(x).localeCompare(JSON.stringify(y))));
+   // Allow moving the planned start earlier than Date Started to fill free capacity.
+   // Never rewrite an actual start that is already in the past.
+   const firstFuture=entries.map(e=>e.date).sort()[0]||'';
+   const newStarted=firstFuture&&(!o.dateStarted||o.dateStarted>firstFuture)&&(!o.dateStarted||o.dateStarted>=cutoff)?firstFuture:o.dateStarted;
+   if(canonical(next)!==canonical(o.plannedDays)||result.targetDate!==o.targetDate||newStarted!==o.dateStarted)changes.push({order:o,next,finish:result.finish,targetDate:result.targetDate||o.targetDate,dateStarted:newStarted});
   }
-  const entries=[];
-  const result=replanAllocate(booked,o,replanStart(o)>cutoff?replanStart(o):cutoff,entries,true);
-  if(result.error){errors.push(result.error);continue;}
-  const past=(Array.isArray(o.plannedDays)?o.plannedDays:[]).filter(e=>e&&e.date&&e.date<cutoff);
-  const next=[...past,...entries.map(e=>({date:e.date,name:e.name,hours:Number(e.hours.toFixed(3))}))];
-  const canonical=a=>JSON.stringify((a||[]).map(e=>[e.date,String(e.name).toLowerCase(),Number(e.hours)]).sort((x,y)=>JSON.stringify(x).localeCompare(JSON.stringify(y))));
-  if(canonical(next)!==canonical(o.plannedDays)||result.targetDate!==o.targetDate)proposals.push({order:o,next,finish:result.finish,targetDate:result.targetDate||o.targetDate});
+  // A working day with 0.75h should be filled where legally possible.
+  // Score ALL technician-days touched by the planning horizon, including PM.
+  const dates=[...b.keys()].map(k=>k.slice(-10)).filter(d=>d>=cutoff).sort();
+  const horizon=dates.length?dates[dates.length-1]:cutoff;
+  let underload=0,extensions=0;
+  for(const t of technicians){
+   const name=techName(t).toLowerCase();
+   for(let d=cutoff,i=0;d<=horizon&&i<365;i++,d=plannerNext(d)){
+    if(![1,2,3,4,5].includes(plannerDay(d)))continue;
+    const cap=plannerDailyCapacity(techName(t),d);
+    if(cap<5.2)continue; // leave/partial capacity: no artificial 65% target
+    const h=b.get(name+'|'+d)||0;
+    if(h>0.00001&&h<5.2)underload+=(5.2-h)*(5.2-h);
+   }
+  }
+  for(const c of changes){if(c.targetDate>c.order.targetDate)extensions+=Math.max(0,(new Date(c.targetDate)-new Date(c.order.targetDate))/86400000);}
+  return {b,changes,issues,score:underload+extensions*0.02};
+ };
+ const candidates=strategies.map(makePlan).filter(x=>!x.issues.length);
+ if(!candidates.length){const failed=makePlan(active);errors.push(...failed.issues);}
+ else{
+  candidates.sort((a,b)=>a.score-b.score);
+  const best=candidates[0];booked.clear();for(const [k,v] of best.b)booked.set(k,v);
+  proposals.push(...best.changes);
  }
  if(errors.length){alert('NU S-A SALVAT NIMIC. Unele lucrări nu pot fi planificate (verifică tehnicienii, schimburile sau capacitatea):\n\n'+errors.slice(0,25).join('\n')+'\n\nTarget Date este prelungit automat când există capacitate disponibilă.');return false;}
  // Historical reported hours are immutable. A technician may already have
@@ -1264,11 +1304,11 @@ async function woCalRebalanceFuture(options={}){
  if(!proposals.length){if(autoClose)return {proposals:[]};alert('Nu sunt modificări de planificare de astăzi înainte.');return;}
  const preview=proposals.slice(0,25).map(p=>p.order.id+' → '+p.finish+' (Target '+p.order.targetDate+' → '+p.targetDate+')').join('\n');
  if(autoClose)return {proposals,preview};
- if(!confirm('REPLANIFICARE DE AZI ÎNAINTE — MAXIMUM 8 ORE/ZI, TARGET DATE PRELUNGIT AUTOMAT\n\n'+proposals.length+' WO-uri se modifică.\n'+preview+(proposals.length>25?'\n...':'')+'\n\nConfirmi salvarea?'))return;
+ if(!confirm('REPLANIFICARE OPTIMIZATĂ — 65% DORIT, MAXIMUM 8 ORE/ZI, TARGET DATE AUTOMAT\n\n'+proposals.length+' WO-uri se modifică.\n'+preview+(proposals.length>25?'\n...':'')+'\n\nConfirmi salvarea?'))return;
  let saved=0;
  try{
-  for(const p of proposals){await adminRequest('upsertOrder',{order:{...p.order,targetDate:p.targetDate,plannedDays:p.next,updated:new Date().toISOString()},newAttachments:[]});saved++;}
-  await refreshCloud();renderWoCalendar();alert('Replanificate '+saved+' WO-uri. Target Date a fost prelungit automat unde a fost necesar.');
+  for(const p of proposals){await adminRequest('upsertOrder',{order:{...p.order,targetDate:p.targetDate,dateStarted:p.dateStarted,plannedDays:p.next,updated:new Date().toISOString()},newAttachments:[]});saved++;}
+  await refreshCloud();renderWoCalendar();alert('Replanificate '+saved+' WO-uri. S-a optimizat distribuția către minimum 65%, iar Date Started a fost devansat automat unde a fost necesar. Zilele sub 65% pot rămâne numai când nu există suficiente ore eligibile sau capacitate din cauza PM/orelor realizate. Target Date a fost prelungit unde a fost necesar.');
  }catch(e){await refreshCloud().catch(()=>{});renderWoCalendar();alert('ATENȚIE: salvare parțială ('+saved+'/'+proposals.length+'). '+(e.message||e));}
 }
 async function woCalApplyEarlierTargets(){
@@ -1382,7 +1422,7 @@ function renderWoCalendar(){
  const yearChoices=Array.from({length:11},(_,i)=>iso.year-5+i).map(y=>`<option value="${y}" ${y===iso.year?'selected':''}>${y}</option>`).join('');
  const weekChoices=Array.from({length:woCalWeeksInYear(iso.year)},(_,i)=>`<option value="${i+1}" ${i+1===iso.week?'selected':''}>${uiText('Săptămâna','Week')} ${String(i+1).padStart(2,'0')}</option>`).join('');
  const weekPicker=`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px">An săptămână <select id="woCalWeekYear" onchange="woCalWeekYearChanged()" style="width:auto">${yearChoices}</select></label><label style="display:inline-flex;align-items:center;gap:5px;font-size:12px">Nr. săptămână <select id="woCalWeekNumber" onchange="woCalChooseWeek()" style="width:auto">${weekChoices}</select></label>`;
- const controls=`<div class="wo-cal-controls"><strong>Calendar Work Orders + PM</strong><button class="small secondary" onclick="woCalMove(-1)">◀</button><button class="small secondary" onclick="woCalAnchor=new Date();woCalSelected='';renderWoCalendar()">Astăzi</button><button class="small secondary" onclick="woCalMove(1)">▶</button><select onchange="woCalMode=this.value;woCalSelected='';renderWoCalendar()"><option value="year" ${woCalMode==='year'?'selected':''}>An</option><option value="week" ${woCalMode==='week'?'selected':''}>Săptămână</option><option value="day" ${woCalMode==='day'?'selected':''}>Zi</option></select><select onchange="woCalShiftFilter=this.value;renderWoCalendar()"><option value="">Toate schimburile</option>${['A','B','C'].map(x=>`<option value="${x}" ${woCalShiftFilter===x?'selected':''}>Schimb ${x}</option>`).join('')}</select>${weekPicker}<button type="button" class="small secondary" onclick="woCalRebalanceFuture()">↻ Replanifică de azi înainte (max. 8h)</button><span>${woCalMode==='year'?'Anul '+woCalAnchor.getFullYear():woCalMode==='week'?days[0]+' – '+days[4]:date}</span></div><div class="wo-cal-legend"><span class="wo-done">Verde: închis (istoric planificat, nu neapărat ore realizate)</span><span class="wo-started">Albastru: lucrare începută</span><span class="wo-plan">Galben: ziua curentă / planificat</span><span class="wo-late">Roșu: overdue</span></div>`;
+ const controls=`<div class="wo-cal-controls"><strong>Calendar Work Orders + PM</strong><button class="small secondary" onclick="woCalMove(-1)">◀</button><button class="small secondary" onclick="woCalAnchor=new Date();woCalSelected='';renderWoCalendar()">Astăzi</button><button class="small secondary" onclick="woCalMove(1)">▶</button><select onchange="woCalMode=this.value;woCalSelected='';renderWoCalendar()"><option value="year" ${woCalMode==='year'?'selected':''}>An</option><option value="week" ${woCalMode==='week'?'selected':''}>Săptămână</option><option value="day" ${woCalMode==='day'?'selected':''}>Zi</option></select><select onchange="woCalShiftFilter=this.value;renderWoCalendar()"><option value="">Toate schimburile</option>${['A','B','C'].map(x=>`<option value="${x}" ${woCalShiftFilter===x?'selected':''}>Schimb ${x}</option>`).join('')}</select>${weekPicker}<button type="button" class="small secondary" onclick="woCalRebalanceFuture()">↻ Replanifică (țintă 65–100%, max. 8h)</button><span>${woCalMode==='year'?'Anul '+woCalAnchor.getFullYear():woCalMode==='week'?days[0]+' – '+days[4]:date}</span></div><div class="wo-cal-legend"><span class="wo-done">Verde: închis (istoric planificat, nu neapărat ore realizate)</span><span class="wo-started">Albastru: lucrare începută</span><span class="wo-plan">Galben: ziua curentă / planificat</span><span class="wo-late">Roșu: overdue</span></div>`;
  const techs=technicians.filter(t=>!woCalShiftFilter||t.shift===woCalShiftFilter).sort((a,b)=>(a.shift||'Z').localeCompare(b.shift||'Z')||techName(a).localeCompare(techName(b),'ro'));
  if(woCalMode==='year'){
   const year=woCalAnchor.getFullYear(),months=Array.from({length:12},(_,i)=>year+'-'+String(i+1).padStart(2,'0'));
